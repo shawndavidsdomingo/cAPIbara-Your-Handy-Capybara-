@@ -10,7 +10,8 @@ from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton)
 
-from demo_store import is_valid_email, mask_email
+from auth_service import (email_taken, is_valid_email, mask_email,
+                          update_password)
 
 ERROR_STYLE = "color: #A3524A;"
 MUTED_STYLE = "color: #6B6B68; font-size: 12px;"
@@ -161,20 +162,26 @@ class NewEmailDialog(QDialog):
             self.error.setText("Please enter a valid email address.")
         elif new.lower() == self.current_email.lower():
             self.error.setText("That is already your current email.")
+        elif email_taken(new):
+            self.error.setText("That email is already in use.")
         else:
             self.email = new
             self.accept()
 
 
 class NewPasswordDialog(QDialog):
-    """Step 2 of changing password (shown only after the OTP is verified)."""
+    """Step 2 of changing password (shown only after the OTP is verified).
+    The service checks the current password and saves the new salted hash."""
 
-    def __init__(self, current_password, parent=None):
+    def __init__(self, user_id, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Change Password")
-        self.current_password = current_password
-        self.password = ""
+        self.user_id = user_id
         layout = make_dialog_layout(self, "Set new password")
+
+        self.old = QLineEdit()
+        self.old.setPlaceholderText("Current password")
+        self.old.setEchoMode(QLineEdit.Password)
 
         self.new = QLineEdit()
         self.new.setPlaceholderText("New password (8+ characters)")
@@ -188,6 +195,7 @@ class NewPasswordDialog(QDialog):
         self.error = QLabel("")
         self.error.setStyleSheet(ERROR_STYLE)
         self.error.setAlignment(Qt.AlignCenter)
+        self.error.setWordWrap(True)
 
         save = QPushButton("Save password")
         save.clicked.connect(self.submit)
@@ -196,20 +204,24 @@ class NewPasswordDialog(QDialog):
         cancel.setObjectName("secondary")
         cancel.clicked.connect(self.reject)
 
-        for w in (self.new, self.confirm, self.error, save, cancel):
+        for w in (self.old, self.new, self.confirm, self.error, save, cancel):
             layout.addWidget(w)
 
     def submit(self):
-        new, confirm = self.new.text(), self.confirm.text()
-        if len(new) < 8:
+        old, new, confirm = self.old.text(), self.new.text(), self.confirm.text()
+        if not old:
+            self.error.setText("Enter your current password.")
+        elif len(new) < 8:
             self.error.setText("Password must be at least 8 characters.")
         elif new != confirm:
             self.error.setText("Passwords do not match.")
-        elif new == self.current_password:
-            self.error.setText("Choose a different password.")
         else:
-            self.password = new
-            self.accept()
+            try:
+                update_password(self.user_id, old, new)
+            except ValueError as error:
+                self.error.setText(str(error))
+            else:
+                self.accept()
 
 
 class SentDialog(QDialog):
