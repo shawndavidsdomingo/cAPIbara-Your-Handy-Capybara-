@@ -1,0 +1,12 @@
+import sys
+from PySide6.QtWidgets import QApplication
+
+import navigation
+from theme import STYLESHEET
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    app.setStyleSheet(STYLESHEET)   
+    navigation.go_login()
+    sys.exit(app.exec())
