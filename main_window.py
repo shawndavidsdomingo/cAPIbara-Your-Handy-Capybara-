@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                                QListWidget, QStackedWidget, QLabel)
 
 import navigation
+import session
 import stats
 from pages.dashboard_page import DashboardPage
 from pages.url_page import UrlPage
@@ -12,9 +13,10 @@ from widgets import make_button
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, username):
+    def __init__(self):
         super().__init__()
-        self.setWindowTitle("Utilities Hub")
+        username = session.current()["username"]
+        self.setWindowTitle("cAPIbara: Your Handy Capybara")
         stats.reset()      # fresh totals for each login
 
         central = QWidget()
@@ -33,11 +35,11 @@ class MainWindow(QMainWindow):
 
         # Pages (same order as the menu items)
         self.pages = QStackedWidget()
-        self.pages.addWidget(DashboardPage(username))
+        self.pages.addWidget(DashboardPage())
         self.pages.addWidget(UrlPage())
         self.pages.addWidget(MessagePage())
         self.pages.addWidget(FakeDataPage())
-        self.pages.addWidget(ProfilePage(username))
+        self.pages.addWidget(ProfilePage())
 
         self.menu.currentRowChanged.connect(self.change_page)
         self.menu.setCurrentRow(0)          # also sizes the window (see change_page)
@@ -79,4 +81,5 @@ class MainWindow(QMainWindow):
 
     def logout(self):
         if self.can_leave_page():
+            session.logout()
             navigation.go_login()
