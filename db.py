@@ -19,6 +19,23 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     created_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS links (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id),
+    short_url    TEXT NOT NULL,
+    original_url TEXT NOT NULL,
+    alias        TEXT,
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_links_user ON links(user_id);
+
+CREATE TABLE IF NOT EXISTS link_clicks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    link_id    INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    clicked_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_clicks_link ON link_clicks(link_id);
 """
 
 
