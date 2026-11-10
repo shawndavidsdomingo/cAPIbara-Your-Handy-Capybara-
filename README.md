@@ -22,6 +22,28 @@ The OTP dialog runs in demo mode: the code is shown on screen and no email is se
 - SQLite through the built-in `sqlite3` module (nothing extra to install)
 - `requests` (Ulvis API), `openpyxl` (Excel export), `pytest` (tests)
 
+## Requirements
+
+You need Python 3.10 or newer. Check with `python --version`. These packages are installed from `requirements.txt`:
+
+| Package | Used for | Needed from |
+| --- | --- | --- |
+| PySide6 | The GUI (Qt for Python) | Now |
+| requests | Calling the Ulvis URL shortening API | Sprint 2 |
+| openpyxl | Excel export of generated fake data | Now (Fake Data page) |
+| pytest | Running the tests | Now |
+
+`sqlite3` is built into Python, so SQLite needs no install. `requirements.txt` contains:
+
+```
+PySide6
+openpyxl
+requests
+pytest
+```
+
+Optional: install [DB Browser for SQLite](https://sqlitebrowser.org/) to look inside `capibara.db` while testing.
+
 ## Setup
 
 ```
@@ -86,8 +108,8 @@ Rules the code follows: no plain-text passwords, every SQL statement uses `?` pl
 
 | Role | Member | Responsibility |
 | --- | --- | --- |
-| A | _name_ | Data and Services: schema, hashing, services, API, tests |
-| B | _name_ | UI and Integration: windows, pages, dialogs, theme, docs |
+| A | Domingo, Shawn David S. | Data and Services: schema, hashing, services, API, tests |
+| B | Gloria, Jan-Neo S. | UI and Integration: windows, pages, dialogs, theme, docs |
 
 ## Documentation
 
