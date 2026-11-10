@@ -1,3 +1,6 @@
+import json
+import logging
+
 import pytest
 import requests
 
@@ -5,6 +8,8 @@ import auth_service as auth
 import db
 import stats
 import url_service as svc
+
+LONG = "https://example.com/some/long/page"
 
 
 @pytest.fixture(autouse=True)
@@ -21,17 +26,15 @@ def users():
 
 
 class FakeReply:
-    def __init__(self, payload=None, status=200, bad_json=False):
-        self.payload, self.status_code, self.bad_json = payload, status, bad_json
+    """Stands in for requests.Response. Pass a dict (sent as JSON) or raw text."""
+
+    def __init__(self, body="", status=200):
+        self.text = body if isinstance(body, str) else json.dumps(body)
+        self.status_code = status
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise requests.exceptions.HTTPError(str(self.status_code))
-
-    def json(self):
-        if self.bad_json:
-            raise ValueError("not json")
-        return self.payload
 
 
 def fake_get(reply):
@@ -49,58 +52,86 @@ def test_valid_urls(url):
     assert svc.is_valid_url(url)
 
 
-@pytest.mark.parametrize("url", ["", "example.com", "ftp://example.com", "http://", "https://a b.com", "not a link"])
+@pytest.mark.parametrize("url", ["", "example.com", "ftp://example.com",
+                                 "http://", "https://a b.com", "not a link"])
 def test_invalid_urls_rejected(url):
     assert not svc.is_valid_url(url)
 
 
-def test_alias_rules():
-    assert svc.is_valid_alias("my_link1")
-    for bad in ("ab", "x" * 21, "has space", "dash-ed", ""):
-        assert not svc.is_valid_alias(bad)
+# ---------- Reading the reply (the network is always faked) ----------
+
+@pytest.mark.parametrize("body", [
+    {"success": True, "data": {"id": "abc123", "url": "https://ulvis.net/abc123",
+                               "full": LONG, "status": "ok"}},
+    {"status": "success", "data": "https://ulvis.net/abc123"},
+    {"error": 0, "data": {"short": "https://ulvis.net/abc123"}},
+    {"error": {"code": 0, "msg": ""}, "data": {"url": "https://ulvis.net/abc123"}},
+    '{"data":{"url":"https:\\/\\/ulvis.net\\/abc123"}}',          # PHP-escaped slashes
+    "https://ulvis.net/abc123",                                   # plain text reply
+    "<result><url>https://ulvis.net/abc123</url></result>",       # XML reply
+], ids=["json-dict", "json-string", "json-short", "json-error-zero",
+        "escaped-slashes", "plain-text", "xml"])
+def test_short_link_is_found_in_any_reply_shape(monkeypatch, body):
+    monkeypatch.setattr(requests, "get", fake_get(FakeReply(body)))
+    assert svc.ulvis_shorten(LONG) == "https://ulvis.net/abc123"
 
 
-# ---------- Provider (the network is always faked) ----------
+def test_code_only_reply_is_turned_into_a_link(monkeypatch):
+    monkeypatch.setattr(requests, "get", fake_get(FakeReply({"data": {"id": "xYz9"}})))
+    assert svc.ulvis_shorten(LONG) == "https://ulvis.net/xYz9"
 
-def test_success_reply_with_string_data(monkeypatch):
+
+def test_original_link_is_never_returned_as_the_short_link(monkeypatch):
+    original = "https://ulvis.net/some-page-to-shorten"
+    body = {"data": {"full": original, "url": "https://ulvis.net/q1w2e3"}}
+    monkeypatch.setattr(requests, "get", fake_get(FakeReply(body)))
+    assert svc.ulvis_shorten(original) == "https://ulvis.net/q1w2e3"
+
+
+def test_documentation_links_are_not_short_links(monkeypatch):
     monkeypatch.setattr(requests, "get", fake_get(FakeReply(
-        {"status": "success", "data": "https://ulvis.net/abc123"})))
-    assert svc.ulvis_shorten("https://example.com") == "https://ulvis.net/abc123"
+        {"error": "see https://ulvis.net/developer.html"})))
+    with pytest.raises(svc.ShortenError):
+        svc.ulvis_shorten(LONG)
 
 
-def test_success_reply_with_dict_data(monkeypatch):
-    monkeypatch.setattr(requests, "get", fake_get(FakeReply(
-        {"error": 0, "data": {"id": "abc123", "short": "https://ulvis.net/abc123"}})))
-    assert svc.ulvis_shorten("https://example.com") == "https://ulvis.net/abc123"
-
-
-def test_alias_is_sent_as_custom(monkeypatch):
+def test_only_the_url_is_sent(monkeypatch):
     seen = {}
 
     def _get(url, params=None, timeout=None):
-        seen.update(params=params, timeout=timeout)
-        return FakeReply({"status": "success", "data": "https://ulvis.net/mine"})
+        seen.update(url=url, params=params, timeout=timeout)
+        return FakeReply("https://ulvis.net/abc123")
 
     monkeypatch.setattr(requests, "get", _get)
-    svc.ulvis_shorten("https://example.com", "mine")
-    assert seen["params"]["custom"] == "mine"
-    assert seen["params"]["url"] == "https://example.com"
+    svc.ulvis_shorten(LONG)
+    assert seen["url"] == svc.ULVIS_ENDPOINT
+    assert seen["params"] == {"url": LONG}
     assert seen["timeout"] == svc.TIMEOUT
 
 
-@pytest.mark.parametrize("payload, message", [
-    ({"status": "error", "error": "custom name already exists"}, svc.MSG_ALIAS_TAKEN),
+@pytest.mark.parametrize("body, message", [
     ({"status": "error", "error": "Invalid url"}, svc.MSG_INVALID_URL),
-    ({"status": "error", "error": "Too many requests"}, svc.MSG_RATE_LIMIT),
+    ({"error": {"code": 3, "msg": "Too many requests"}}, svc.MSG_RATE_LIMIT),
     ({"status": "error", "error": "boom"}, svc.MSG_UNEXPECTED),
     ({"hello": "world"}, svc.MSG_UNEXPECTED),
     (["not", "a", "dict"], svc.MSG_UNEXPECTED),
-])
-def test_error_replies_become_readable_messages(monkeypatch, payload, message):
-    monkeypatch.setattr(requests, "get", fake_get(FakeReply(payload)))
+    ("<html>oops</html>", svc.MSG_UNEXPECTED),
+    ("", svc.MSG_UNEXPECTED),
+], ids=["bad-url", "rate-limit-dict", "unknown-error", "no-fields",
+        "list", "html", "empty"])
+def test_error_replies_become_readable_messages(monkeypatch, body, message):
+    monkeypatch.setattr(requests, "get", fake_get(FakeReply(body)))
     with pytest.raises(svc.ShortenError) as error:
-        svc.ulvis_shorten("https://example.com")
+        svc.ulvis_shorten(LONG)
     assert str(error.value) == message
+
+
+def test_unrecognised_reply_is_logged_for_debugging(monkeypatch, caplog):
+    monkeypatch.setattr(requests, "get", fake_get(FakeReply({"weird": "shape"})))
+    with caplog.at_level(logging.WARNING, logger="url_service"):
+        with pytest.raises(svc.ShortenError):
+            svc.ulvis_shorten(LONG)
+    assert "weird" in caplog.text
 
 
 @pytest.mark.parametrize("reply, message", [
@@ -108,19 +139,18 @@ def test_error_replies_become_readable_messages(monkeypatch, payload, message):
     (requests.exceptions.ConnectionError(), svc.MSG_NO_CONNECTION),
     (FakeReply(status=429), svc.MSG_RATE_LIMIT),
     (FakeReply(status=500), svc.MSG_NO_CONNECTION),
-    (FakeReply(bad_json=True), svc.MSG_UNEXPECTED),
-])
+], ids=["timeout", "no-connection", "http-429", "http-500"])
 def test_network_problems_become_readable_messages(monkeypatch, reply, message):
     monkeypatch.setattr(requests, "get", fake_get(reply))
     with pytest.raises(svc.ShortenError) as error:
-        svc.ulvis_shorten("https://example.com")
+        svc.ulvis_shorten(LONG)
     assert str(error.value) == message
 
 
 def test_failed_shorten_saves_nothing(monkeypatch, users):
     monkeypatch.setattr(requests, "get", fake_get(requests.exceptions.Timeout()))
     with pytest.raises(svc.ShortenError):
-        svc.ulvis_shorten("https://example.com")
+        svc.ulvis_shorten(LONG)
     assert svc.get_links(users[0]) == []
 
 
@@ -128,11 +158,20 @@ def test_failed_shorten_saves_nothing(monkeypatch, users):
 
 def test_saved_link_appears_in_history(users):
     juan, _ = users
-    link_id = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a", "mine")
+    link_id = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
     links = svc.get_links(juan)
     assert len(links) == 1
-    assert links[0]["id"] == link_id and links[0]["alias"] == "mine"
-    assert links[0]["short_url"] == "https://ulvis.net/a" and links[0]["clicks"] == 0
+    assert links[0]["id"] == link_id
+    assert links[0]["short_url"] == "https://ulvis.net/a"
+    assert links[0]["original_url"] == "https://example.com/a"
+    assert links[0]["clicks"] == 0
+
+
+def test_same_long_url_can_be_shortened_twice(users):
+    juan, _ = users
+    svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    svc.save_link(juan, "https://ulvis.net/b", "https://example.com/a")
+    assert len(svc.get_links(juan)) == 2
 
 
 def test_history_is_newest_first(users):
