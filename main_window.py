@@ -75,6 +75,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # also asks about unsaved drafts when the window is closed
         if self.can_leave_page():
+            for i in range(self.pages.count()):
+                page = self.pages.widget(i)
+                if hasattr(page, "shutdown"):
+                    page.shutdown()      # lets a running request finish
             event.accept()
         else:
             event.ignore()
