@@ -1,11 +1,13 @@
 """Decides which window is on screen (Login, Register or Main).
 
 Windows never create each other. They just call go_login(), go_register()
-or go_main(username) from here.
+or go_main() from here. go_main() needs a logged-in session.
 
 The window classes are imported INSIDE the functions on purpose: the windows
 import this module, so importing them at the top would be a circular import.
 """
+
+import session
 
 _current = None    # the window on screen now
 _previous = None   # the window closed one step ago. It is kept alive on purpose:
@@ -31,6 +33,7 @@ def go_register():
     _show(RegisterWindow())
 
 
-def go_main(username):
+def go_main():
+    session.require_login()        # guard: no session, no main window
     from main_window import MainWindow
-    _show(MainWindow(username))
+    _show(MainWindow())

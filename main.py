@@ -2,11 +2,13 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 import navigation
+from db import init_db
 from theme import STYLESHEET
 
 if __name__ == "__main__":
+    init_db()                        # creates capibara.db on first launch
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLESHEET)   
+    app.setStyleSheet(STYLESHEET)
     navigation.go_login()
     sys.exit(app.exec())
