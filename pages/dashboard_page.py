@@ -55,6 +55,6 @@ class DashboardPage(QWidget):
         self.welcome.setText(f"Welcome back, {self.user['full_name']}!")
         self.emails.set_value(data["emails"])
         self.sms.set_value(data["sms"])
-        self.links.set_value(data["links"])
+        self.links.set_value(stats.count_links(self.user["id"]))
         self.gens.set_value(len(data["generations"]))
         self.gen_ids.setText(", ".join(data["generations"]) or "None yet")
