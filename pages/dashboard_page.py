@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 
+import session
 import stats
-from demo_store import get_user
 from widgets import make_label
 
 
@@ -22,9 +22,9 @@ class StatCard(QWidget):
 
 
 class DashboardPage(QWidget):
-    def __init__(self, username):
+    def __init__(self):
         super().__init__()
-        self.user = get_user(username)
+        self.user = session.current()
 
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignTop)

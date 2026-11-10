@@ -2,7 +2,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QDialog)
 
-from demo_store import get_user
+import session
+from auth_service import update_email, update_name
 from dialogs import NewEmailDialog, NewPasswordDialog, verify_otp
 from widgets import make_button, make_label
 
@@ -12,11 +13,12 @@ ERR_COLOR = "#A3524A"
 
 class ProfilePage(QWidget):
     """Update name, change email (OTP to NEW email),
-    change password (OTP to CURRENT email). GUI/state simulation only."""
+    change password (OTP to CURRENT email). Saved through auth_service."""
 
-    def __init__(self, username):
+    def __init__(self):
         super().__init__()
-        self.user = get_user(username)          # dict from demo_store
+        self.user = session.current()           # the logged-in user's dict
+        username = self.user["username"]
 
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignTop)
@@ -72,6 +74,11 @@ class ProfilePage(QWidget):
         elif new == self.user["full_name"]:
             self.show_status("No changes to save.", ok=False)
         else:
+            try:
+                update_name(self.user["id"], new)
+            except ValueError as error:
+                self.show_status(str(error), ok=False)
+                return
             self.user["full_name"] = new
             self.show_status("Name updated.")
 
@@ -84,6 +91,11 @@ class ProfilePage(QWidget):
         new_email = dialog.email
 
         if verify_otp(self, new_email, "Confirm your new email"):
+            try:
+                update_email(self.user["id"], new_email)
+            except ValueError as error:
+                self.show_status(str(error), ok=False)
+                return
             self.user["email"] = new_email
             self.email.setText(new_email)
             self.show_status("Email updated.")
@@ -97,9 +109,8 @@ class ProfilePage(QWidget):
             self.show_status("Password was not changed.", ok=False)
             return
 
-        dialog = NewPasswordDialog(self.user["password"], self)
+        dialog = NewPasswordDialog(self.user["id"], self)
         if dialog.exec() == QDialog.Accepted:
-            self.user["password"] = dialog.password
             self.show_status("Password updated.")
         else:
             self.show_status("Password was not changed.", ok=False)
