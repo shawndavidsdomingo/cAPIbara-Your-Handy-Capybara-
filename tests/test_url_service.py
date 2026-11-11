@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import pytest
 import requests
@@ -167,13 +168,6 @@ def test_saved_link_appears_in_history(users):
     assert links[0]["clicks"] == 0
 
 
-def test_same_long_url_can_be_shortened_twice(users):
-    juan, _ = users
-    svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
-    svc.save_link(juan, "https://ulvis.net/b", "https://example.com/a")
-    assert len(svc.get_links(juan)) == 2
-
-
 def test_history_is_newest_first(users):
     juan, _ = users
     svc.save_link(juan, "https://ulvis.net/1", "https://example.com/1")
@@ -213,3 +207,67 @@ def test_delete_link_removes_its_clicks(users):
     assert svc.get_links(juan) == []
     with db.connection() as conn:
         assert conn.execute("SELECT COUNT(*) FROM link_clicks").fetchone()[0] == 0
+
+
+# ---------- Reusing a link ----------
+
+def tick():
+    time.sleep(0.01)          # keep timestamps (millisecond resolution) distinct
+
+
+def test_saving_the_same_url_again_keeps_one_row_and_moves_it_to_top(users):
+    juan, _ = users
+    first = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    tick(); svc.save_link(juan, "https://ulvis.net/b", "https://example.com/b")
+    tick(); svc.save_link(juan, "https://ulvis.net/c", "https://example.com/c")
+    tick()
+    again = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    assert again == first
+    assert [l["original_url"] for l in svc.get_links(juan)] == [
+        "https://example.com/a", "https://example.com/c", "https://example.com/b"]
+
+
+def test_bumping_a_link_moves_it_to_top_and_keeps_its_clicks(users):
+    juan, _ = users
+    old = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    svc.record_click(juan, old); svc.record_click(juan, old)
+    tick(); svc.save_link(juan, "https://ulvis.net/b", "https://example.com/b")
+    tick()
+    assert svc.bump_link(juan, old)
+    links = svc.get_links(juan)
+    assert links[0]["id"] == old and links[0]["clicks"] == 2
+    assert len(links) == 2
+
+
+def test_find_link_matches_only_this_users_exact_url(users):
+    juan, maria = users
+    link_id = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    assert svc.find_link(juan, "https://example.com/a")["id"] == link_id
+    assert svc.find_link(maria, "https://example.com/a") is None
+    assert svc.find_link(juan, "https://example.com/a?x=1") is None
+    assert svc.find_link(juan, "https://example.com/other") is None
+
+
+def test_two_users_can_shorten_the_same_url_separately(users):
+    juan, maria = users
+    svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    svc.save_link(maria, "https://ulvis.net/a", "https://example.com/a")
+    assert len(svc.get_links(juan)) == 1 and len(svc.get_links(maria)) == 1
+
+
+def test_cannot_bump_another_users_link(users):
+    juan, maria = users
+    link_id = svc.save_link(juan, "https://ulvis.net/a", "https://example.com/a")
+    assert not svc.bump_link(maria, link_id)
+
+
+def test_old_duplicate_rows_do_not_break_lookup(users):
+    juan, _ = users
+    with db.connection() as conn:            # rows saved before dedup existed
+        for code in ("old1", "old2"):
+            conn.execute("INSERT INTO links (user_id, short_url, original_url) "
+                         "VALUES (?, ?, ?)", (juan, f"https://ulvis.net/{code}",
+                                              "https://example.com/a"))
+    assert svc.find_link(juan, "https://example.com/a")["short_url"] == "https://ulvis.net/old2"
+    svc.save_link(juan, "https://ulvis.net/new", "https://example.com/a")
+    assert svc.get_links(juan)[0]["short_url"] == "https://ulvis.net/new"
