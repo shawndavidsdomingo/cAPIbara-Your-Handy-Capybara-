@@ -271,3 +271,67 @@ def test_old_duplicate_rows_do_not_break_lookup(users):
     assert svc.find_link(juan, "https://example.com/a")["short_url"] == "https://ulvis.net/old2"
     svc.save_link(juan, "https://ulvis.net/new", "https://example.com/a")
     assert svc.get_links(juan)[0]["short_url"] == "https://ulvis.net/new"
+
+
+# ---------- Search and sort (arrange_links) ----------
+
+ROWS = [   # in the default order: most recently shortened first
+    {"id": 3, "short_url": "https://ulvis.net/Cc", "original_url": "https://zeta.com/page", "created_at": "2026-11-11 03:30:00.500"},
+    {"id": 2, "short_url": "https://ulvis.net/aa", "original_url": "https://Alpha.com/page", "created_at": "2026-11-11 03:20:00.100"},
+    {"id": 1, "short_url": "https://ulvis.net/Bb", "original_url": "https://mid.com/page", "created_at": "2026-11-10 22:00:00"},
+]
+
+
+def ids(rows):
+    return [row["id"] for row in rows]
+
+
+def test_default_order_is_kept():
+    assert ids(svc.arrange_links(ROWS)) == [3, 2, 1]
+    assert ids(svc.arrange_links(ROWS, "", "short", 0)) == [3, 2, 1]
+
+
+def test_sort_short_link_a_to_z_and_z_to_a_ignores_case():
+    assert ids(svc.arrange_links(ROWS, sort_by="short", order=1)) == [2, 1, 3]   # aa, Bb, Cc
+    assert ids(svc.arrange_links(ROWS, sort_by="short", order=2)) == [3, 1, 2]
+
+
+def test_sort_original_link_a_to_z_and_z_to_a_ignores_case():
+    assert ids(svc.arrange_links(ROWS, sort_by="original", order=1)) == [2, 1, 3]  # Alpha, mid, zeta
+    assert ids(svc.arrange_links(ROWS, sort_by="original", order=2)) == [3, 1, 2]
+
+
+def test_sort_date_earliest_and_latest_first():
+    assert ids(svc.arrange_links(ROWS, sort_by="date", order=1)) == [1, 2, 3]
+    assert ids(svc.arrange_links(ROWS, sort_by="date", order=2)) == [3, 2, 1]
+
+
+def test_unknown_sort_column_is_ignored():
+    assert ids(svc.arrange_links(ROWS, sort_by="clicks", order=1)) == [3, 2, 1]
+
+
+def test_search_matches_short_or_original_in_any_case():
+    assert ids(svc.arrange_links(ROWS, "ALPHA")) == [2]            # original link
+    assert ids(svc.arrange_links(ROWS, "ulvis.net/bb")) == [1]     # short link
+    assert ids(svc.arrange_links(ROWS, "page")) == [3, 2, 1]
+    assert svc.arrange_links(ROWS, "nothing like this") == []
+
+
+def test_blank_search_returns_everything():
+    assert ids(svc.arrange_links(ROWS, "   ")) == [3, 2, 1]
+
+
+def test_search_and_sort_work_together_and_do_not_change_the_input():
+    original = list(ROWS)
+    result = svc.arrange_links(ROWS, "ulvis.net", "short", 1)
+    assert ids(result) == [2, 1, 3]
+    assert ROWS == original
+
+
+def test_arranges_real_saved_links(users):
+    juan, _ = users
+    svc.save_link(juan, "https://ulvis.net/Zz", "https://b.com")
+    svc.save_link(juan, "https://ulvis.net/aa", "https://a.com")
+    links = svc.get_links(juan)
+    assert [l["short_url"][-2:] for l in svc.arrange_links(links, sort_by="short", order=1)] == ["aa", "Zz"]
+    assert [l["short_url"][-2:] for l in svc.arrange_links(links, "a.com")] == ["aa"]

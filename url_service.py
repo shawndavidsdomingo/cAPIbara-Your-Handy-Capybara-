@@ -182,6 +182,32 @@ def get_links(user_id):
         return [dict(row) for row in conn.execute(sql, (user_id,)).fetchall()]
 
 
+SORT_FIELDS = {"short": "short_url", "original": "original_url", "date": "created_at"}
+
+
+def arrange_links(links, query="", sort_by=None, order=0):
+    """Search and sort a list from get_links() without touching the database.
+
+    query    text to find in the short or the original link (any case)
+    sort_by  "short", "original" or "date"
+    order    0 = default (the order given), 1 = A to Z / earliest first,
+             2 = Z to A / latest first
+    """
+    query = query.strip().casefold()
+    rows = [link for link in links
+            if not query
+            or query in link["short_url"].casefold()
+            or query in link["original_url"].casefold()]
+    if order in (1, 2) and sort_by in SORT_FIELDS:
+        field = SORT_FIELDS[sort_by]
+        if sort_by == "date":
+            key = lambda link: link[field]
+        else:
+            key = lambda link: link[field].casefold()
+        rows.sort(key=key, reverse=(order == 2))
+    return rows
+
+
 def delete_link(user_id, link_id):
     """Clicks go too (ON DELETE CASCADE). Returns True if a row was deleted."""
     with connection() as conn:
