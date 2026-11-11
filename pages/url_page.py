@@ -13,13 +13,15 @@ from widgets import make_label, make_error_label
 
 
 class ElidedLabel(QLabel):
-    """A label that cuts long text with '...' to fit its current width."""
+    """A label that cuts long text with '...' to fit its current width.
+    Click it to copy the full text: `clicked` sends that text."""
+    clicked = Signal(str)
 
     def __init__(self, text):
         super().__init__()
         self.full_text = text
-        self.setToolTip(text)                       # hover shows the full text
-        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.setToolTip(f"{text}\nClick to copy")   # hover shows the full text
+        self.setCursor(Qt.PointingHandCursor)
         # Ignore the text's own width, so the grid decides the size
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.show_elided()
@@ -31,6 +33,44 @@ class ElidedLabel(QLabel):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.show_elided()
+
+    def set_underline(self, on):
+        font = self.font()
+        font.setUnderline(on)
+        self.setFont(font)
+        self.show_elided()
+
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.set_underline(True)                    # hover: looks clickable
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        self.set_underline(False)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if (event.button() == Qt.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit(self.full_text)
+
+
+class SortHeader(QLabel):
+    """A column title you can click to sort by that column."""
+    clicked = Signal(int)
+
+    def __init__(self, text, column, tip):
+        super().__init__(text)
+        self.column = column
+        self.setObjectName("bold")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tip)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        if (event.button() == Qt.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit(self.column)
 
 
 class ShortenWorker(QObject):
@@ -62,12 +102,19 @@ def local_time(stamp):
 
 class UrlPage(QWidget):
     HEADERS = ("Short URL", "Original URL", "Shortened", "Clicks", "Actions")
+    SORT_COLUMNS = {0: "short", 1: "original", 2: "date"}   # column -> sort name
+    SORT_TIPS = {0: "Click to sort: default, A to Z, Z to A",
+                 1: "Click to sort: default, A to Z, Z to A",
+                 2: "Click to sort: default, earliest, latest"}
 
     def __init__(self):
         super().__init__()
         self.thread = None          # keep references while a request runs,
         self.worker = None          # or Python may delete them mid-flight
         self.pending = None         # the long URL of the request in progress
+        self.links = []             # every saved link (search and sort work on this)
+        self.sort_col = -1          # column being sorted (-1 = none)
+        self.sort_state = 0         # 0 = default, 1 = A to Z / earliest, 2 = Z to A / latest
 
         layout = QVBoxLayout(self)
         layout.addWidget(make_label("URL Shortening", "heading"))
@@ -101,7 +148,16 @@ class UrlPage(QWidget):
         layout.addWidget(self.error)
         layout.addWidget(self.note)
 
-        layout.addWidget(QLabel("History"))
+        history_row = QHBoxLayout()
+        history_row.addWidget(QLabel("History"))
+        history_row.addStretch()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search short or original link")
+        self.search.setClearButtonEnabled(True)
+        self.search.setFixedWidth(300)
+        self.search.textChanged.connect(self.render_history)
+        history_row.addWidget(self.search)
+        layout.addLayout(history_row)
         layout.addWidget(self.build_history(), 1)
 
     # ---------- Page contract ----------
@@ -144,28 +200,72 @@ class UrlPage(QWidget):
         while self.grid.count():
             widget = self.grid.takeAt(0).widget()
             if widget is not None:
+                widget.hide()                       # gone from the screen right away
+                widget.setParent(None)
                 widget.deleteLater()
         for row in range(self.row_count + 2):
             self.grid.setRowMinimumHeight(row, 0)
 
     def reload_history(self):
-        self.clear_grid()
-        links = url_service.get_links(session.current()["id"])
-        self.row_count = len(links)
+        """Read the links from the database, then draw them (search and sort stay)."""
+        self.links = url_service.get_links(session.current()["id"])
+        self.render_history()
 
-        if not links:
-            empty = make_label("No links yet. Shorten your first one above.", "muted")
-            self.grid.addWidget(empty, 0, 0, 1, 5, Qt.AlignTop)
+    def show_newest(self):
+        """After a new or reused link: clear search and sort so it shows at the top."""
+        self.sort_col, self.sort_state = -1, 0
+        self.search.blockSignals(True)
+        self.search.clear()
+        self.search.blockSignals(False)
+
+    def sort_by_column(self, col):
+        """Click a header: Default -> A to Z (earliest) -> Z to A (latest) -> Default."""
+        if col != self.sort_col:
+            self.sort_col = col
+            self.sort_state = 1
+        else:
+            self.sort_state = (self.sort_state + 1) % 3
+            if self.sort_state == 0:
+                self.sort_col = -1
+        self.render_history()
+
+    def render_history(self, _text=None):
+        self.clear_grid()
+        rows = url_service.arrange_links(
+            self.links, self.search.text(),
+            self.SORT_COLUMNS.get(self.sort_col), self.sort_state)
+        self.row_count = len(rows)
+
+        if not self.links:
+            message = "No links yet. Shorten your first one above."
+        elif not rows:
+            message = "No links match your search."
+        else:
+            message = None
+        if message:
+            self.grid.addWidget(make_label(message, "muted"), 0, 0, 1, 5, Qt.AlignTop)
             return
 
         for col, text in enumerate(self.HEADERS):
-            self.grid.addWidget(make_label(text, "bold"), 0, col, Qt.AlignVCenter)
-        for row, link in enumerate(links, start=1):
+            if col in self.SORT_COLUMNS:
+                arrow = ""
+                if col == self.sort_col:
+                    arrow = "  ▲" if self.sort_state == 1 else "  ▼"
+                header = SortHeader(text + arrow, col, self.SORT_TIPS[col])
+                header.clicked.connect(self.sort_by_column)
+            else:
+                header = make_label(text, "bold")
+            self.grid.addWidget(header, 0, col, Qt.AlignVCenter)
+        for row, link in enumerate(rows, start=1):
             self.add_row(row, link)
 
     def add_row(self, row, link):
-        self.grid.addWidget(ElidedLabel(link["short_url"]), row, 0, Qt.AlignVCenter)
-        self.grid.addWidget(ElidedLabel(link["original_url"]), row, 1, Qt.AlignVCenter)
+        short = ElidedLabel(link["short_url"])
+        short.clicked.connect(lambda text: self.copy_url(text, "Short link copied."))
+        original = ElidedLabel(link["original_url"])
+        original.clicked.connect(lambda text: self.copy_url(text, "Original link copied."))
+        self.grid.addWidget(short, row, 0, Qt.AlignVCenter)
+        self.grid.addWidget(original, row, 1, Qt.AlignVCenter)
         self.grid.addWidget(QLabel(local_time(link["created_at"])), row, 2, Qt.AlignVCenter)
         self.grid.addWidget(QLabel(str(link["clicks"])), row, 3, Qt.AlignVCenter)
 
@@ -223,6 +323,7 @@ class UrlPage(QWidget):
             url_service.bump_link(user_id, existing["id"])
             self.short_url.setText(existing["short_url"])
             self.long_url.clear()
+            self.show_newest()
             self.reload_history()
             self.show_error("")
             self.note.setText("Already shortened. Moved to the top.")
@@ -247,6 +348,7 @@ class UrlPage(QWidget):
         url_service.save_link(session.current()["id"], short, self.pending)
         self.short_url.setText(short)
         self.long_url.clear()
+        self.show_newest()
         self.reload_history()
         self.note.setText("Link created.")
 
@@ -268,11 +370,11 @@ class UrlPage(QWidget):
         url_service.record_click(session.current()["id"], link["id"])
         self.reload_history()                       # shows the new click count
 
-    def copy_url(self, url):
+    def copy_url(self, url, message="Copied to clipboard."):
         if url:
             QApplication.clipboard().setText(url)
             self.error.setText("")
-            self.note.setText("Copied to clipboard.")
+            self.note.setText(message)
 
     def delete_link(self, link):
         answer = QMessageBox.question(
