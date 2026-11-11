@@ -54,14 +54,14 @@ class ShortenWorker(QObject):
 def local_time(stamp):
     """SQLite stores UTC. Show it in the computer's own time zone."""
     try:
-        utc = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        utc = datetime.strptime(stamp[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
         return utc.astimezone().strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
         return stamp or ""
 
 
 class UrlPage(QWidget):
-    HEADERS = ("Short URL", "Original URL", "Created", "Clicks", "Actions")
+    HEADERS = ("Short URL", "Original URL", "Shortened", "Clicks", "Actions")
 
     def __init__(self):
         super().__init__()
@@ -215,6 +215,17 @@ class UrlPage(QWidget):
 
         if not url_service.is_valid_url(url):
             self.show_error(url_service.MSG_INVALID_URL)
+            return
+
+        user_id = session.current()["id"]
+        existing = url_service.find_link(user_id, url)
+        if existing:                                # same link again: no new row
+            url_service.bump_link(user_id, existing["id"])
+            self.short_url.setText(existing["short_url"])
+            self.long_url.clear()
+            self.reload_history()
+            self.show_error("")
+            self.note.setText("Already shortened. Moved to the top.")
             return
 
         self.show_error("")
