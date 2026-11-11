@@ -33,6 +33,9 @@ MSG_TIMEOUT = "The shortener took too long. Try again."
 MSG_RATE_LIMIT = "Too many requests. Please wait a moment and try again."
 MSG_UNEXPECTED = "The shortener sent an unexpected reply."
 
+# UTC "now" with milliseconds, so links sort exactly by when they were last used
+NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
+
 # A short link on ulvis.net (page names like /developer.html are not short links)
 SHORT_LINK = re.compile(
     r"https?://(?:www\.)?ulvis\.net/"
@@ -133,20 +136,48 @@ def _read_reply(text, long_url):
 
 # ---------- Storage (every query is scoped to the user) ----------
 
-def save_link(user_id, short_url, original_url):
+def find_link(user_id, original_url):
+    """The user's saved link for this exact URL (newest if there are several)."""
+    sql = ("SELECT id, short_url, original_url, created_at FROM links "
+           "WHERE user_id = ? AND original_url = ? "
+           "ORDER BY created_at DESC, id DESC LIMIT 1")
+    with connection() as conn:
+        row = conn.execute(sql, (user_id, original_url)).fetchone()
+    return dict(row) if row else None
+
+
+def bump_link(user_id, link_id):
+    """Move a link back to the top of the history. Clicks are kept."""
     with connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO links (user_id, short_url, original_url) VALUES (?, ?, ?)",
+            f"UPDATE links SET created_at = {NOW} WHERE id = ? AND user_id = ?",
+            (link_id, user_id))
+        return cursor.rowcount > 0
+
+
+def save_link(user_id, short_url, original_url):
+    """One row per user and URL: saving the same URL again just moves it to the top."""
+    existing = find_link(user_id, original_url)
+    with connection() as conn:
+        if existing:
+            conn.execute(
+                f"UPDATE links SET short_url = ?, created_at = {NOW} WHERE id = ?",
+                (short_url, existing["id"]))
+            return existing["id"]
+        cursor = conn.execute(
+            "INSERT INTO links (user_id, short_url, original_url, created_at) "
+            f"VALUES (?, ?, ?, {NOW})",
             (user_id, short_url, original_url))
         return cursor.lastrowid
 
 
 def get_links(user_id):
-    """Newest first, each with its local click count."""
+    """Most recently shortened first, each with its local click count."""
     sql = ("SELECT l.id, l.short_url, l.original_url, l.created_at, "
            "COUNT(c.id) AS clicks "
            "FROM links l LEFT JOIN link_clicks c ON c.link_id = l.id "
-           "WHERE l.user_id = ? GROUP BY l.id ORDER BY l.id DESC")
+           "WHERE l.user_id = ? GROUP BY l.id "
+           "ORDER BY l.created_at DESC, l.id DESC")
     with connection() as conn:
         return [dict(row) for row in conn.execute(sql, (user_id,)).fetchall()]
 
