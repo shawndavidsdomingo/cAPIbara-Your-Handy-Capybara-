@@ -112,6 +112,7 @@ class UrlPage(QWidget):
         self.thread = None          # keep references while a request runs,
         self.worker = None          # or Python may delete them mid-flight
         self.pending = None         # the long URL of the request in progress
+        self.pending_user = None    # who started it (the session may end first)
         self.links = []             # every saved link (search and sort work on this)
         self.sort_col = -1          # column being sorted (-1 = none)
         self.sort_state = 0         # 0 = default, 1 = A to Z / earliest, 2 = Z to A / latest
@@ -166,11 +167,17 @@ class UrlPage(QWidget):
         """Called by MainWindow every time this page opens."""
         self.reload_history()
 
+    def is_busy(self):
+        """True while a request is running (MainWindow asks before closing)."""
+        return self.thread is not None
+
     def shutdown(self):
-        """Called by MainWindow on close: let a running request finish first."""
+        """Called by MainWindow on close: let a running request finish first,
+        then handle its result so the new link is saved before the app exits."""
         if self.thread is not None:
             self.thread.quit()
             self.thread.wait(url_service.TIMEOUT * 1000 + 2000)
+            QApplication.processEvents()
 
     # ---------- History ----------
 
@@ -208,7 +215,10 @@ class UrlPage(QWidget):
 
     def reload_history(self):
         """Read the links from the database, then draw them (search and sort stay)."""
-        self.links = url_service.get_links(session.current()["id"])
+        user = session.current()
+        if user is None:                            # logged out meanwhile
+            return
+        self.links = url_service.get_links(user["id"])
         self.render_history()
 
     def show_newest(self):
@@ -332,6 +342,7 @@ class UrlPage(QWidget):
         self.show_error("")
         self.set_busy(True)
         self.pending = url
+        self.pending_user = user_id
 
         self.thread = QThread(self)
         self.worker = ShortenWorker(url)
@@ -345,7 +356,7 @@ class UrlPage(QWidget):
         self.thread.start()
 
     def on_done(self, short):
-        url_service.save_link(session.current()["id"], short, self.pending)
+        url_service.save_link(self.pending_user, short, self.pending)
         self.short_url.setText(short)
         self.long_url.clear()
         self.show_newest()
@@ -362,6 +373,7 @@ class UrlPage(QWidget):
         self.worker = None
         self.thread = None
         self.pending = None
+        self.pending_user = None
 
     # ---------- Row actions ----------
 
