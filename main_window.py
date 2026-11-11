@@ -1,5 +1,7 @@
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                               QListWidget, QStackedWidget, QLabel)
+                               QListWidget, QStackedWidget, QLabel,
+                               QApplication, QMessageBox)
 
 import navigation
 import session
@@ -15,6 +17,7 @@ from widgets import make_button
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.logging_out = False   # logout closes this window without asking
         username = session.current()["username"]
         self.setWindowTitle("cAPIbara: Your Handy Capybara")
         stats.reset()      # fresh totals for each login
@@ -72,18 +75,48 @@ class MainWindow(QMainWindow):
         screen = self.screen().availableGeometry()
         self.resize(min(width, screen.width()), min(height, screen.height()))
 
-    def closeEvent(self, event):
-        # also asks about unsaved drafts when the window is closed
-        if self.can_leave_page():
-            for i in range(self.pages.count()):
-                page = self.pages.widget(i)
+    # ---------- Closing the app ----------
+
+    def all_pages(self):
+        return [self.pages.widget(i) for i in range(self.pages.count())]
+
+    def task_running(self):
+        """True if any page is busy (a page opts in by defining is_busy())."""
+        return any(hasattr(page, "is_busy") and page.is_busy()
+                   for page in self.all_pages())
+
+    def confirm_close(self):
+        text = "Are you sure you want to close the app?"
+        if self.task_running():
+            text += ("\n\nA task is still running. "
+                     "The app will close as soon as it finishes.")
+        answer = QMessageBox.question(
+            self, "Close cAPIbara", text,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return answer == QMessageBox.Yes
+
+    def finish_running_tasks(self):
+        """Wait for running work (a page opts in by defining shutdown())."""
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for page in self.all_pages():
                 if hasattr(page, "shutdown"):
-                    page.shutdown()      # lets a running request finish
-            event.accept()
-        else:
+                    page.shutdown()
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def closeEvent(self, event):
+        # 1. ask (not when logging out), 2. unsaved drafts, 3. let work finish
+        if not self.logging_out and not self.confirm_close():
             event.ignore()
+        elif not self.can_leave_page():
+            event.ignore()
+        else:
+            self.finish_running_tasks()
+            event.accept()
 
     def logout(self):
         if self.can_leave_page():
-            session.logout()
-            navigation.go_login()
+            self.logging_out = True
+            navigation.go_login()      # closes this window (finishing running work)
+            session.logout()           # cleared last, so that work can still save
