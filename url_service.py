@@ -56,7 +56,7 @@ def is_valid_url(url):
     return parts.scheme in ("http", "https") and bool(parts.netloc)
 
 
-# ---------- Ulvis provider ----------
+# ----- Ulvis provider ----------
 
 def ulvis_shorten(long_url):
     """Return the short URL string, or raise ShortenError."""
