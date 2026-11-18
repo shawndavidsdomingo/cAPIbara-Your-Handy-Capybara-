@@ -1,17 +1,21 @@
 """Reusable pop-up dialogs shared by the Register window and Profile page.
 
-GUI-only: no email is really sent. The OTP is generated locally and shown
-in a 'demo' label so the flow can be tested without a mail server.
+The OTP is generated locally and emailed through Brevo (message_service). If no
+BREVO_API_KEY is set, the dialog stays in demo mode and shows the code on
+screen, so the flow can still be tested without a mail account.
 """
 import random
 
 from PySide6.QtCore import Qt, QTimer, QRegularExpression
 from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QPushButton)
+                               QLineEdit, QPushButton, QTextEdit)
 
+import message_service
 from auth_service import (email_taken, is_valid_email, mask_email,
                           update_password)
+from message_service import SendError
+from workers import Task
 
 ERROR_STYLE = "color: #A3524A;"
 MUTED_STYLE = "color: #6B6B68; font-size: 12px;"
@@ -38,6 +42,10 @@ class OTPDialog(QDialog):
     def __init__(self, email, title, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Verification")
+        self.email = email
+        self.code = None
+        self.task = None           # the background email send, if any
+        self.closed = False        # set when the dialog ends; late replies are ignored
         layout = make_dialog_layout(self, title)
 
         info = QLabel(f"We sent a 6-digit code to\n{mask_email(email)}")
@@ -84,10 +92,46 @@ class OTPDialog(QDialog):
         self.send_code()
 
     def send_code(self):
+        if self.task is not None:          # a code is already being sent
+            return
         self.code = f"{random.randint(0, 999999):06d}"
-        self.demo_hint.setText(f"Demo only: your code is {self.code}")
         self.code_input.clear()
         self.error.setText("")
+        self.resend.setEnabled(False)
+
+        if not message_service.email_enabled():       # demo mode: show the code
+            self.demo_hint.setText(f"Demo only: your code is {self.code}")
+            self.start_countdown()
+            return
+
+        self.demo_hint.setText("Sending the code...")
+        self.resend.setText("Sending...")
+        self.task = Task(message_service.send_otp_email, self.email, self.code,
+                         safe=(SendError,))
+        self.task.succeeded.connect(self.on_code_sent)
+        self.task.failed.connect(self.on_code_failed)
+        self.task.finished.connect(self.clear_task)
+        self.task.start()
+
+    def on_code_sent(self, _result):
+        if self.closed:
+            return
+        self.demo_hint.setText("Check your inbox (and the spam folder).")
+        self.start_countdown()
+
+    def on_code_failed(self, message):
+        if self.closed:
+            return
+        self.code = None                   # that code never reached the user
+        self.demo_hint.setText("")
+        self.error.setText(message)
+        self.resend.setEnabled(True)
+        self.resend.setText("Resend code")
+
+    def clear_task(self):
+        self.task = None
+
+    def start_countdown(self):
         self.seconds_left = self.RESEND_SECONDS
         self.resend.setEnabled(False)
         self.update_resend_text()
@@ -109,6 +153,8 @@ class OTPDialog(QDialog):
         entered = self.code_input.text()
         if len(entered) != 6:
             self.error.setText("Enter the 6-digit code.")
+        elif self.code is None:
+            self.error.setText("No code was sent. Press Resend code.")
         elif entered != self.code:
             self.error.setText("Incorrect code. Try again.")
         else:
@@ -116,6 +162,7 @@ class OTPDialog(QDialog):
             self.accept()
 
     def done(self, result):
+        self.closed = True
         self.timer.stop()          # never leave the timer running
         super().done(result)
 
@@ -227,7 +274,7 @@ class NewPasswordDialog(QDialog):
 class SentDialog(QDialog):
     """Modal shown after an SMS or Email is 'sent'."""
 
-    def __init__(self, kind, recipient, preview, time, parent=None):
+    def __init__(self, kind, recipient, preview, time, parent=None, demo=True):
         super().__init__(parent)
         self.setWindowTitle(f"{kind} Sent")
         layout = make_dialog_layout(self, f"{kind} sent")
@@ -242,11 +289,43 @@ class SentDialog(QDialog):
         info = QLabel(f"Sent at {time}")
         info.setStyleSheet(MUTED_STYLE)
 
-        demo = QLabel("Demo only: nothing was actually sent.")
-        demo.setStyleSheet(MUTED_STYLE)
-
         ok = QPushButton("OK")
         ok.clicked.connect(self.accept)
 
-        for w in (to, body, info, demo, ok):
+        widgets = [to, body, info]
+        if demo:
+            note = QLabel("Demo only: nothing was actually sent.")
+            note.setStyleSheet(MUTED_STYLE)
+            widgets.append(note)
+        widgets.append(ok)
+        for w in widgets:
+            layout.addWidget(w)
+
+
+class MessageDialog(QDialog):
+    """Read-only view of a message from the Sent list (recipient, subject, text)."""
+
+    def __init__(self, kind, recipient, subject, body, time, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Sent {kind}")
+        layout = make_dialog_layout(self, subject or f"Sent {kind}")
+        self.setFixedWidth(520)
+
+        to = QLabel(f"To: {recipient or 'No recipient'}")
+        to.setObjectName("bold")
+        to.setWordWrap(True)
+        to.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        info = QLabel(f"Sent {time}")
+        info.setStyleSheet(MUTED_STYLE)
+
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(body)
+        text.setMinimumHeight(180)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+
+        for w in (to, info, text, close):
             layout.addWidget(w)

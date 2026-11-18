@@ -53,8 +53,8 @@ class DashboardPage(QWidget):
         """Called by MainWindow every time this page is opened."""
         data = stats.get()
         self.welcome.setText(f"Welcome back, {self.user['full_name']}!")
-        self.emails.set_value(data["emails"])
-        self.sms.set_value(data["sms"])
+        self.emails.set_value(stats.count_emails(self.user["id"]))
+        self.sms.set_value(stats.count_sms(self.user["id"]))
         self.links.set_value(stats.count_links(self.user["id"]))
         self.gens.set_value(len(data["generations"]))
         self.gen_ids.setText(", ".join(data["generations"]) or "None yet")
