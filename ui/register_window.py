@@ -4,14 +4,15 @@ from ui import navigation
 from services.auth_service import (email_taken, is_valid_email, is_valid_username,
                           register_user, username_taken)
 from ui.dialogs import verify_otp
-from ui.widgets import make_label, make_error_label, make_input, make_button
+from ui.widgets import (make_label, make_error_label, make_input, make_button,
+                        make_logo)
 
 
 class RegisterWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("cAPIbara – Register")
-        self.setFixedSize(360, 520)
+        self.setFixedSize(360, 590)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 30, 40, 30)
@@ -25,7 +26,8 @@ class RegisterWindow(QWidget):
         self.confirm.returnPressed.connect(self.handle_register)
         self.error = make_error_label()
 
-        for w in (make_label("Create Account", "title", center=True),
+        for w in (make_logo(70),
+                  make_label("Create Account", "title", center=True),
                   self.full_name, self.email, self.username,
                   self.password, self.confirm, self.error,
                   make_button("Register", self.handle_register),
