@@ -35,6 +35,19 @@ CREATE TABLE IF NOT EXISTS link_clicks (
     clicked_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_clicks_link ON link_clicks(link_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('SMS', 'Email')),
+    recipient  TEXT NOT NULL DEFAULT '',
+    subject    TEXT,
+    body       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL CHECK (status IN ('DRAFT', 'SENT', 'FAILED')),
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    sent_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id, kind, status);
 """
 
 
