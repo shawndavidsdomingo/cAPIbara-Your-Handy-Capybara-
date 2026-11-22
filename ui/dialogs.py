@@ -11,11 +11,11 @@ from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QPushButton, QTextEdit)
 
-import message_service
-from auth_service import (email_taken, is_valid_email, mask_email,
+from services import message_service
+from services.auth_service import (email_taken, is_valid_email, mask_email,
                           update_password)
-from message_service import SendError
-from workers import Task
+from services.message_service import SendError
+from ui.workers import Task
 
 ERROR_STYLE = "color: #A3524A;"
 MUTED_STYLE = "color: #6B6B68; font-size: 12px;"

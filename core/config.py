@@ -1,12 +1,13 @@
 """Settings and secrets, read from environment variables or a .env file.
 
-The .env file sits next to this file and is NEVER committed (it is in
+The .env file sits in the project's top folder and is NEVER committed (it is in
 .gitignore). Copy .env.example to .env and fill in your own values.
 Values already set in the real environment win over the file.
 """
 import os
 
-ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 
 DEFAULTS = {
     "SENDER_EMAIL": "noreply@capibara-shawn-neo.online",   # the one address the app sends from

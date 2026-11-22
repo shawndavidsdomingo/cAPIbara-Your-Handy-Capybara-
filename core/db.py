@@ -1,13 +1,14 @@
 """SQLite connection helper and schema (guide section 2).
 
-capibara.db is created next to this file on first launch by init_db().
+capibara.db is created in the project's top folder on first launch by init_db().
 Foreign keys are switched on for every connection.
 """
 import os
 import sqlite3
 from contextlib import contextmanager
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "capibara.db")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(PROJECT_ROOT, "capibara.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -48,6 +49,22 @@ CREATE TABLE IF NOT EXISTS messages (
     sent_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id, kind, status);
+
+CREATE TABLE IF NOT EXISTS fake_generations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    number     INTEGER NOT NULL,              -- the "3" in "Gen 3", per user
+    fields     TEXT NOT NULL,                 -- JSON list of the fields picked
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_fakegen_user ON fake_generations(user_id);
+
+CREATE TABLE IF NOT EXISTS fake_records (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    generation_id INTEGER NOT NULL REFERENCES fake_generations(id) ON DELETE CASCADE,
+    data          TEXT NOT NULL               -- JSON object: field key -> value
+);
+CREATE INDEX IF NOT EXISTS idx_fakerec_gen ON fake_records(generation_id);
 """
 
 

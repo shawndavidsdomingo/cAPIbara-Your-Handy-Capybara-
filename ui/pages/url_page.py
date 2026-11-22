@@ -6,10 +6,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QLabel, QLineEdit, QPushButton, QApplication,
                                QScrollArea, QSizePolicy, QMessageBox)
 
-import session
-import url_service
-from url_service import ShortenError
-from widgets import make_label, make_error_label
+from core import session
+from services import url_service
+from services.url_service import ShortenError
+from ui.widgets import make_label, make_error_label
 
 
 class ElidedLabel(QLabel):

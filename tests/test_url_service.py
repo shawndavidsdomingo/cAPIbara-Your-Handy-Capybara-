@@ -5,10 +5,10 @@ import time
 import pytest
 import requests
 
-import auth_service as auth
-import db
-import stats
-import url_service as svc
+from services import auth_service as auth
+from core import db
+from services import stats
+from services import url_service as svc
 
 LONG = "https://example.com/some/long/page"
 
@@ -129,7 +129,7 @@ def test_error_replies_become_readable_messages(monkeypatch, body, message):
 
 def test_unrecognised_reply_is_logged_for_debugging(monkeypatch, caplog):
     monkeypatch.setattr(requests, "get", fake_get(FakeReply({"weird": "shape"})))
-    with caplog.at_level(logging.WARNING, logger="url_service"):
+    with caplog.at_level(logging.WARNING, logger="services.url_service"):
         with pytest.raises(svc.ShortenError):
             svc.ulvis_shorten(LONG)
     assert "weird" in caplog.text

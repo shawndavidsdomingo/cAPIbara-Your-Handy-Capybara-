@@ -1,9 +1,9 @@
 import sys
 from PySide6.QtWidgets import QApplication
 
-import navigation
-from db import init_db
-from theme import STYLESHEET
+from ui import navigation
+from core.db import init_db
+from ui.theme import STYLESHEET
 
 if __name__ == "__main__":
     init_db()                        # creates capibara.db on first launch

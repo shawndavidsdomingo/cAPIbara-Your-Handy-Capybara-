@@ -3,15 +3,14 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                                QListWidget, QStackedWidget, QLabel,
                                QApplication, QMessageBox)
 
-import navigation
-import session
-import stats
-from pages.dashboard_page import DashboardPage
-from pages.url_page import UrlPage
-from pages.msg_page import MessagePage
-from pages.fake_page import FakeDataPage
-from pages.profile_page import ProfilePage
-from widgets import make_button
+from ui import navigation
+from core import session
+from ui.pages.dashboard_page import DashboardPage
+from ui.pages.url_page import UrlPage
+from ui.pages.msg_page import MessagePage
+from ui.pages.fake_page import FakeDataPage
+from ui.pages.profile_page import ProfilePage
+from ui.widgets import make_button
 
 
 class MainWindow(QMainWindow):
@@ -20,7 +19,6 @@ class MainWindow(QMainWindow):
         self.logging_out = False   # logout closes this window without asking
         username = session.current()["username"]
         self.setWindowTitle("cAPIbara: Your Handy Capybara")
-        stats.reset()      # fresh totals for each login
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -115,8 +113,14 @@ class MainWindow(QMainWindow):
             self.finish_running_tasks()
             event.accept()
 
+    def confirm_logout(self):
+        answer = QMessageBox.question(
+            self, "Log out", "Are you sure you want to log out?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return answer == QMessageBox.Yes
+
     def logout(self):
-        if self.can_leave_page():
+        if self.confirm_logout() and self.can_leave_page():
             self.logging_out = True
             navigation.go_login()      # closes this window (finishing running work)
             session.logout()           # cleared last, so that work can still save

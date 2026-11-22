@@ -22,9 +22,9 @@ import logging
 
 import requests
 
-import config
-from auth_service import is_valid_email
-from db import connection
+from core import config
+from services.auth_service import is_valid_email
+from core.db import connection
 
 log = logging.getLogger(__name__)
 

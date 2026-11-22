@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox
 
-import navigation
-from auth_service import (email_taken, is_valid_email, is_valid_username,
+from ui import navigation
+from services.auth_service import (email_taken, is_valid_email, is_valid_username,
                           register_user, username_taken)
-from dialogs import verify_otp
-from widgets import make_label, make_error_label, make_input, make_button
+from ui.dialogs import verify_otp
+from ui.widgets import make_label, make_error_label, make_input, make_button
 
 
 class RegisterWindow(QWidget):

@@ -7,7 +7,7 @@ The window classes are imported INSIDE the functions on purpose: the windows
 import this module, so importing them at the top would be a circular import.
 """
 
-import session
+from core import session
 
 _current = None    # the window on screen now
 _previous = None   # the window closed one step ago. It is kept alive on purpose:
@@ -24,16 +24,16 @@ def _show(window):
 
 
 def go_login():
-    from login_window import LoginWindow
+    from ui.login_window import LoginWindow
     _show(LoginWindow())
 
 
 def go_register():
-    from register_window import RegisterWindow
+    from ui.register_window import RegisterWindow
     _show(RegisterWindow())
 
 
 def go_main():
     session.require_login()        # guard: no session, no main window
-    from main_window import MainWindow
+    from ui.main_window import MainWindow
     _show(MainWindow())

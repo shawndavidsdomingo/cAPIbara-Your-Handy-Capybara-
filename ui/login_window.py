@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
-import navigation
-import session
-from auth_service import verify_login
-from widgets import make_label, make_error_label, make_input, make_button
+from ui import navigation
+from core import session
+from services.auth_service import verify_login
+from ui.widgets import make_label, make_error_label, make_input, make_button
 
 
 class LoginWindow(QWidget):

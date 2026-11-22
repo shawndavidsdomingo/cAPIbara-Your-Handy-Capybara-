@@ -8,13 +8,13 @@ from PySide6.QtWidgets import (
     QListWidget, QMessageBox, QApplication
 )
 
-import message_service
-import session
-from auth_service import is_valid_email
-from dialogs import MessageDialog, SentDialog
-from message_service import SendError
-from workers import Task
-from widgets import make_label
+from services import message_service
+from core import session
+from services.auth_service import is_valid_email
+from ui.dialogs import MessageDialog, SentDialog
+from services.message_service import SendError
+from ui.workers import Task
+from ui.widgets import make_label
 
 log = logging.getLogger(__name__)
 
