@@ -1,8 +1,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 
+import session
 import stats
-from demo_store import get_user
 from widgets import make_label
 
 
@@ -22,9 +22,9 @@ class StatCard(QWidget):
 
 
 class DashboardPage(QWidget):
-    def __init__(self, username):
+    def __init__(self):
         super().__init__()
-        self.user = get_user(username)
+        self.user = session.current()
 
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignTop)
@@ -53,8 +53,8 @@ class DashboardPage(QWidget):
         """Called by MainWindow every time this page is opened."""
         data = stats.get()
         self.welcome.setText(f"Welcome back, {self.user['full_name']}!")
-        self.emails.set_value(data["emails"])
-        self.sms.set_value(data["sms"])
-        self.links.set_value(data["links"])
+        self.emails.set_value(stats.count_emails(self.user["id"]))
+        self.sms.set_value(stats.count_sms(self.user["id"]))
+        self.links.set_value(stats.count_links(self.user["id"]))
         self.gens.set_value(len(data["generations"]))
         self.gen_ids.setText(", ".join(data["generations"]) or "None yet")

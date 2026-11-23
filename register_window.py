@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox
 
 import navigation
-from demo_store import (add_user, username_taken, is_valid_email,
-                        is_valid_username)
+from auth_service import (email_taken, is_valid_email, is_valid_username,
+                          register_user, username_taken)
 from dialogs import verify_otp
 from widgets import make_label, make_error_label, make_input, make_button
 
@@ -10,7 +10,7 @@ from widgets import make_label, make_error_label, make_input, make_button
 class RegisterWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Utilities Hub - Register")
+        self.setWindowTitle("cAPIbara – Register")
         self.setFixedSize(360, 520)
 
         layout = QVBoxLayout(self)
@@ -48,15 +48,24 @@ class RegisterWindow(QWidget):
                 "Username must be 3-20 letters, numbers or underscores.")
         elif username_taken(username):
             self.error.setText("That username is already taken.")
+        elif email_taken(email):
+            self.error.setText("That email is already registered.")
         elif len(password) < 8:
             self.error.setText("Password must be at least 8 characters.")
         elif password != self.confirm.text():
             self.error.setText("Passwords do not match.")
-        elif verify_otp(self, email, "Verify your email"):
-            # The account is only created AFTER the OTP is verified
-            add_user(username, name, email, password)
-            QMessageBox.information(
-                self, "Register", "Account created. You can now log in.")
-            navigation.go_login()
-        else:
+        elif not verify_otp(self, email, "Verify your email"):
             self.error.setText("Email not verified. Account not created.")
+        else:
+            self.create_account(name, email, username, password)
+
+    def create_account(self, name, email, username, password):
+        # The account is only created AFTER the OTP is verified
+        try:
+            register_user(username, name, email, password)
+        except ValueError as error:
+            self.error.setText(str(error))
+            return
+        QMessageBox.information(
+            self, "Register", "Account created. You can now log in.")
+        navigation.go_login()
