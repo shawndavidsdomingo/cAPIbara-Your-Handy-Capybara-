@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from db import connection
+from core.db import connection
 
 log = logging.getLogger(__name__)
 

@@ -3,10 +3,10 @@ import sqlite3
 
 import pytest
 
-import auth_service
-import db
-import message_service as ms
-import stats
+from services import auth_service
+from core import db
+from services import message_service as ms
+from services import stats
 
 
 @pytest.fixture(autouse=True)

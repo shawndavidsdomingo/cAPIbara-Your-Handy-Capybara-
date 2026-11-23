@@ -1,9 +1,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 
-import session
-import stats
-from widgets import make_label
+from core import session
+from services import stats
+from ui.widgets import make_label
 
 
 class StatCard(QWidget):
@@ -51,10 +51,9 @@ class DashboardPage(QWidget):
 
     def refresh(self):
         """Called by MainWindow every time this page is opened."""
-        data = stats.get()
         self.welcome.setText(f"Welcome back, {self.user['full_name']}!")
         self.emails.set_value(stats.count_emails(self.user["id"]))
         self.sms.set_value(stats.count_sms(self.user["id"]))
         self.links.set_value(stats.count_links(self.user["id"]))
-        self.gens.set_value(len(data["generations"]))
-        self.gen_ids.setText(", ".join(data["generations"]) or "None yet")
+        self.gens.set_value(stats.count_generations(self.user["id"]))
+        self.gen_ids.setText(", ".join(stats.generation_names(self.user["id"])) or "None yet")

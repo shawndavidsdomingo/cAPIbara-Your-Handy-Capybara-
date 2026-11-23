@@ -1,16 +1,17 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
-import navigation
-import session
-from auth_service import verify_login
-from widgets import make_label, make_error_label, make_input, make_button
+from ui import navigation
+from core import session
+from services.auth_service import verify_login
+from ui.widgets import (make_label, make_error_label, make_input, make_button,
+                        make_logo)
 
 
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("cAPIbara – Login")
-        self.setFixedSize(360, 380)
+        self.setFixedSize(360, 500)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 30, 40, 30)
@@ -21,7 +22,8 @@ class LoginWindow(QWidget):
         self.password.returnPressed.connect(self.handle_login)
         self.error = make_error_label()
 
-        for w in (make_label("cAPIbara", "title", center=True),
+        for w in (make_logo(130),
+                  make_label("cAPIbara", "title", center=True),
                   make_label("Your Handy Capybara", "muted", center=True),
                   self.username, self.password, self.error,
                   make_button("Login", self.handle_login),

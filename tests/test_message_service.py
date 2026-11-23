@@ -2,9 +2,9 @@
 import pytest
 import requests
 
-import config
-import message_service
-from message_service import SendError
+from core import config
+from services import message_service
+from services.message_service import SendError
 
 
 class FakeReply:

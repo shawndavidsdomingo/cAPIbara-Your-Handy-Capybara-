@@ -10,7 +10,7 @@ import os
 import re
 import sqlite3
 
-from db import connection
+from core.db import connection
 
 ITERATIONS = 200_000
 MIN_PASSWORD = 8

@@ -2,10 +2,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QDialog)
 
-import session
-from auth_service import update_email, update_name
-from dialogs import NewEmailDialog, NewPasswordDialog, verify_otp
-from widgets import make_button, make_label
+from core import session
+from services.auth_service import update_email, update_name
+from ui.dialogs import NewEmailDialog, NewPasswordDialog, verify_otp
+from ui.widgets import make_button, make_label
 
 OK_COLOR = "#5B7F5E"
 ERR_COLOR = "#A3524A"

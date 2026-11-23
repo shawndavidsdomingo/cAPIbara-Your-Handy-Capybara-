@@ -3,8 +3,15 @@
 Colors and fonts are NOT set here. They come from theme.py through the
 objectName ("title", "heading", "bold", "muted", "error", "secondary", ...).
 """
+import os
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
+
+ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+LOGO_PATH = os.path.join(ASSETS, "logo.png")     # the capybara, transparent background
+ICON_PATH = os.path.join(ASSETS, "icon.png")     # square version for window icons
 
 
 def make_label(text="", style=None, center=False):
@@ -14,6 +21,17 @@ def make_label(text="", style=None, center=False):
         label.setObjectName(style)
     if center:
         label.setAlignment(Qt.AlignCenter)
+    return label
+
+
+def make_logo(height):
+    """The cAPIbara logo scaled to `height` pixels. Empty if the file is missing."""
+    label = QLabel()
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    pixmap = QPixmap(LOGO_PATH)
+    if not pixmap.isNull():
+        label.setPixmap(pixmap.scaledToHeight(
+            height, Qt.TransformationMode.SmoothTransformation))
     return label
 
 
