@@ -1,14 +1,15 @@
 """SQLite connection helper and schema (guide section 2).
 
-capibara.db is created in the project's top folder on first launch by init_db().
+capibara.db is created next to the app (the project's top folder, or the .exe) on first launch by init_db().
 Foreign keys are switched on for every connection.
 """
 import os
 import sqlite3
 from contextlib import contextmanager
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(PROJECT_ROOT, "capibara.db")
+from core.paths import app_folder
+
+DB_PATH = os.path.join(app_folder(), "capibara.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
