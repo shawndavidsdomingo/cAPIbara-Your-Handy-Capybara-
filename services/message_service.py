@@ -10,7 +10,8 @@ How sending works
   domain capibara-shawn-neo.online). When a signed-in user writes an email,
   their own address goes in Reply-To so replies reach them.
 - Every email is sent as plain text plus a small HTML version with the cAPIbara
-  header. If LOGO_URL (a public https link) is set, the header is that picture.
+  header. The sender's own spacing (indents, blank lines) is kept in both, and a
+  signed-in user's email ends with "Sent from <registered name> <registered email>". If LOGO_URL (a public https link) is set, the header is that picture.
 - The API key comes from .env / the environment (see config.py). It is never
   logged and never committed.
 
@@ -19,6 +20,7 @@ query is scoped to the user's id.
 """
 import html
 import logging
+import re
 
 import requests
 
@@ -65,10 +67,23 @@ def logo_url():
     return url
 
 
-def build_html(body):
+def _keep_spacing(text):
+    """HTML squeezes spaces and ignores tabs. Turn the user's indents and runs of
+    spaces into non-breaking spaces so the email looks the way it was typed."""
+    text = text.replace("\t", "    ")
+    text = re.sub(r"(?m)^ ", "&nbsp;", text)               # a space at the start of a line
+    return re.sub(r" {2,}", lambda m: " " + "&nbsp;" * (len(m.group(0)) - 1), text)
+
+
+def sender_line(email, name=""):
+    """Plain text for the footer: Sent from Juan Cruz <juan@example.com>."""
+    return f"Sent from {name} <{email}>" if name else f"Sent from {email}"
+
+
+def build_html(body, sent_from=None, sent_name=""):
     """The HTML version of an email: a small header (logo + name), the
-    message, and a quiet footer. Everything the user typed is escaped, so it can
-    never inject markup. It uses no page background, so it sits cleanly on
+    message, and a quiet footer ("Sent from Name <email>" when the sender is known).
+    Everything the user typed is escaped, so it can never inject markup. It uses no page background, so it sits cleanly on
     Gmail's white (or dark) reading pane."""
     logo = logo_url()
     name = ('<span style="font-size:17px;font-weight:600;color:#2B2B2B">cAPIbara</span><br>'
@@ -83,7 +98,15 @@ def build_html(body):
             '</tr></table>')
     else:
         header = f'<div style="line-height:1.3">{name}</div>'
-    text = html.escape(body).replace("\r\n", "\n").replace("\n", "<br>")
+    text = html.escape(body).replace("\r\n", "\n")
+    text = _keep_spacing(text).replace("\n", "<br>")
+    if sent_from:
+        who = f"{html.escape(sent_name)} " if sent_name else ""
+        address = html.escape(sent_from, quote=True)
+        footer = (f'Sent from {who}&lt;<a href="mailto:{address}" '
+                  f'style="color:#8A8A86;text-decoration:none">{address}</a>&gt;')
+    else:
+        footer = "Sent with cAPIbara"
     return (
         '<!DOCTYPE html><html><body style="margin:0;padding:0">'
         '<div style="max-width:520px;margin:0;padding:20px 4px;'
@@ -91,7 +114,7 @@ def build_html(body):
         f'<div style="padding-bottom:18px;border-bottom:1px solid #E3E3DF">{header}</div>'
         f'<div style="padding:22px 0;font-size:15px;line-height:1.6">{text}</div>'
         '<div style="padding-top:14px;border-top:1px solid #E3E3DF;'
-        'font-size:12px;color:#8A8A86">Sent with cAPIbara</div>'
+        f'font-size:12px;color:#8A8A86">{footer}</div>'
         '</div></body></html>'
     )
 
@@ -101,7 +124,8 @@ def send_email(to, subject, body, reply_to=None):
 
     reply_to is an optional (email, name) pair.
     """
-    to, subject, body = to.strip(), subject.strip(), body.strip()
+    to, subject = to.strip(), subject.strip()
+    body = body.strip("\r\n") if body.strip() else ""     # keep the first line's indent
     if not is_valid_email(to):
         raise SendError(MSG_BAD_RECIPIENT)
     if not subject:
@@ -112,12 +136,13 @@ def send_email(to, subject, body, reply_to=None):
     if not api_key:
         raise SendError(MSG_NOT_CONFIGURED)
 
+    sent_from, sent_name = (reply_to[0], reply_to[1] or "") if reply_to else (None, "")
     payload = {
         "sender": {"name": config.get("SENDER_NAME"), "email": config.get("SENDER_EMAIL")},
         "to": [{"email": to}],
         "subject": subject,
-        "textContent": body,
-        "htmlContent": build_html(body),
+        "textContent": f"{body}\n\n{sender_line(sent_from, sent_name)}" if sent_from else body,
+        "htmlContent": build_html(body, sent_from, sent_name),
     }
     if reply_to:
         address, name = reply_to

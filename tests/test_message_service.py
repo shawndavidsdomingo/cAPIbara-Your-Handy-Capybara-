@@ -24,7 +24,7 @@ def no_real_network(monkeypatch):
     """Any test that forgets to fake requests.post fails instead of sending."""
     def blocked(*args, **kwargs):
         raise AssertionError("test tried to use the real network")
-    monkeypatch.setattr(message_service.requests, "post", blocked)
+    monkeypatch.setattr(requests, "post", blocked)
     monkeypatch.setenv("BREVO_API_KEY", "test-key")
     monkeypatch.setenv("SENDER_EMAIL", "noreply@capibara-shawn-neo.online")
     monkeypatch.setenv("SENDER_NAME", "cAPIbara")
@@ -38,7 +38,7 @@ def fake_post(monkeypatch, reply=None, error=None):
         if error:
             raise error
         return reply or FakeReply()
-    monkeypatch.setattr(message_service.requests, "post", post)
+    monkeypatch.setattr(requests, "post", post)
     return calls
 
 
@@ -61,7 +61,7 @@ def test_send_email_returns_message_id_and_builds_request(monkeypatch):
         "sender": {"name": "cAPIbara", "email": "noreply@capibara-shawn-neo.online"},
         "to": [{"email": "juan@example.com"}],
         "subject": "Hello",
-        "textContent": "Body text",
+        "textContent": "Body text\n\nSent from Me <me@example.com>",
         "replyTo": {"email": "me@example.com", "name": "Me"},
     }
     assert "Body text" in html_part
@@ -187,6 +187,56 @@ def test_logo_url_cannot_break_out_of_the_attribute(monkeypatch):
     monkeypatch.setenv("LOGO_URL", 'https://x.com/a.png" onerror="alert(1)')
     page = message_service.build_html("Hi")
     assert '" onerror=' not in page
+
+
+def test_footer_shows_the_registered_name_and_email_of_the_sender():
+    page = message_service.build_html("Hi", "juan@example.com", "Juan Cruz")
+    assert "Sent from Juan Cruz &lt;" in page
+    assert ">juan@example.com</a>&gt;" in page
+    assert 'href="mailto:juan@example.com"' in page
+    assert "Sent with cAPIbara" not in page
+
+
+def test_footer_without_a_name_shows_just_the_email():
+    page = message_service.build_html("Hi", "juan@example.com")
+    assert "Sent from &lt;" in page and ">juan@example.com</a>&gt;" in page
+
+
+def test_footer_defaults_to_sent_with_capibara():
+    assert "Sent with cAPIbara" in message_service.build_html("Hi")
+
+
+def test_footer_email_is_escaped():
+    page = message_service.build_html("Hi", "a@example.com", "<i>Juan</i>")
+    assert "<i>Juan</i>" not in page and "&lt;i&gt;Juan" in page
+    page = message_service.build_html("Hi", '<b>x</b>@example.com')
+    assert "<b>x</b>" not in page
+
+
+def test_typed_spacing_is_kept_in_html():
+    page = message_service.build_html("Dear Shawn,\n\n        I hope you are fine\n\tTabbed  line")
+    assert "&nbsp;&nbsp;" in page
+    assert page.count("<br>") == 4
+    assert "<br><br>" in page                       # the blank line survives
+    assert "        I hope" not in page             # no raw spaces left to collapse
+
+
+def test_leading_blank_lines_are_trimmed_but_first_indent_is_kept(monkeypatch):
+    calls = fake_post(monkeypatch)
+    message_service.send_email("a@b.co", "Hi", "\n\n    Indented first line\n\n")
+    assert calls[0][1]["json"]["textContent"] == "    Indented first line"
+
+
+def test_text_version_ends_with_the_sender(monkeypatch):
+    calls = fake_post(monkeypatch)
+    message_service.send_email("a@b.co", "Hi", "Body", reply_to=("juan@example.com", "Juan"))
+    assert calls[0][1]["json"]["textContent"].endswith("Sent from Juan <juan@example.com>")
+
+
+def test_text_version_without_a_name_ends_with_just_the_email(monkeypatch):
+    calls = fake_post(monkeypatch)
+    message_service.send_email("a@b.co", "Hi", "Body", reply_to=("juan@example.com", ""))
+    assert calls[0][1]["json"]["textContent"].endswith("Sent from juan@example.com")
 
 
 # ---------- OTP email ----------

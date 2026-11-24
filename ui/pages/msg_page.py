@@ -28,6 +28,11 @@ def local_stamp(stamp):
         return stamp or ""
 
 
+def keep_format(text):
+    """Trim blank lines around a message but keep the typed indents and spacing."""
+    return text.strip("\r\n") if text.strip() else ""
+
+
 def now_stamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -505,7 +510,7 @@ class EmailTab(DraftTab):
         return {
             "to": self.to.text().strip(),
             "subject": self.subject.text().strip(),
-            "body": self.body.toPlainText().strip()
+            "body": keep_format(self.body.toPlainText())
         }
 
     def set_data(self, d):
