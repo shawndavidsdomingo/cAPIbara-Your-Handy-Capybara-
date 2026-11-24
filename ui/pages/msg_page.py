@@ -334,7 +334,7 @@ class DraftTab(QWidget):
         """Called by MainWindow on close: let a running send finish first,
         then handle its result so the message is recorded before the app exits."""
         if self.task is not None:
-            self.task.wait(message_service.TIMEOUT * 1000 + 2000)
+            self.task.wait(message_service.MAX_SEND_SECONDS * 1000 + 2000)
             QApplication.processEvents()
 
     def set_sending(self, busy):
@@ -475,6 +475,28 @@ class SmsTab(DraftTab):
 
     def from_fields(self, recipient, subject, body):
         return {"number": recipient, "text": body}
+
+    # ---- Real sending through TextBee (message_service) ----
+
+    @property
+    def demo(self):
+        """No TEXTBEE_API_KEY in .env: nothing really leaves the app."""
+        return not message_service.sms_enabled()
+
+    def problem_with(self, d):
+        if not d["number"]:
+            return "Enter a recipient mobile number."
+        if not message_service.is_valid_ph_mobile(d["number"]):
+            return message_service.MSG_BAD_NUMBER
+        if not d["text"]:
+            return "Write a message."
+        return None
+
+    def deliver(self, d):
+        if self.demo:
+            self.finish_send(d)
+            return
+        self.start_task(d, message_service.send_sms, d["number"], d["text"])
 
 
 class EmailTab(DraftTab):

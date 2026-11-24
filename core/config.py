@@ -17,6 +17,8 @@ DEFAULTS = {
     "SENDER_EMAIL": "noreply@capibara-shawn-neo.online",   # the one address the app sends from
     "SENDER_NAME": "cAPIbara",
     "LOGO_URL": "",    # public https link to the logo shown at the top of every email
+    "TEXTBEE_BASE_URL": "https://api.textbee.dev/api/v1",
+    "TEXTBEE_DEVICE_ID": "",   # optional: which phone sends. Empty = your default TextBee device
 }
 
 
