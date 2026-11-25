@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS fake_records (
     data          TEXT NOT NULL               -- JSON object: field key -> value
 );
 CREATE INDEX IF NOT EXISTS idx_fakerec_gen ON fake_records(generation_id);
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    name       TEXT NOT NULL,
+    mobile     TEXT NOT NULL DEFAULT '',      -- 09XXXXXXXXX, or empty
+    email      TEXT NOT NULL DEFAULT '',      -- or empty (one of the two is required)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    CHECK (mobile != '' OR email != '')
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);
 """
 
 

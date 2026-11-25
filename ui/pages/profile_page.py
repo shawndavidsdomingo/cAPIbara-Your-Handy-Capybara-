@@ -1,14 +1,15 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QDialog)
+                               QLineEdit, QDialog, QFrame)
 
 from core import session
 from services.auth_service import update_email, update_name
 from ui.dialogs import NewEmailDialog, NewPasswordDialog, verify_otp
-from ui.widgets import make_button, make_label
+from ui.theme import COLORS
+from ui.widgets import make_button, make_card, make_label
 
-OK_COLOR = "#5B7F5E"
-ERR_COLOR = "#A3524A"
+OK_COLOR = COLORS["success"]
+ERR_COLOR = COLORS["error"]
 
 
 class ProfilePage(QWidget):
@@ -21,25 +22,38 @@ class ProfilePage(QWidget):
         username = self.user["username"]
 
         outer = QVBoxLayout(self)
-        outer.setAlignment(Qt.AlignTop)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(6)
+        outer.addWidget(make_label("Profile", "title"))
+        outer.addWidget(make_label("Your account details.", "muted"))
+        outer.addSpacing(10)
 
-        card = QWidget()
-        card.setMaximumWidth(460)
+        card = make_card()
+        card.setFixedWidth(540)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(6)
 
-        layout.addWidget(make_label("Profile", "heading"))
-        layout.addWidget(QLabel(f"Username: {username}"))
+        # --- Username (cannot be changed) ---
+        layout.addWidget(make_label("Username", "fieldLabel"))
+        layout.addWidget(make_label(username, "bold"))
+        layout.addSpacing(8)
+        layout.addWidget(self.divider())
+        layout.addSpacing(8)
 
         # --- Name ---
-        layout.addWidget(QLabel("Full name"))
+        layout.addWidget(make_label("Full name", "fieldLabel"))
         self.name = QLineEdit(self.user["full_name"])
-        layout.addWidget(self.name)
-        layout.addWidget(make_button("Save name", self.save_name))
+        name_row = QHBoxLayout()
+        name_row.addWidget(self.name, 1)
+        name_row.addWidget(make_button("Save name", self.save_name))
+        layout.addLayout(name_row)
+        layout.addSpacing(8)
+        layout.addWidget(self.divider())
+        layout.addSpacing(8)
 
         # --- Email (read-only; changed through the OTP flow) ---
-        layout.addWidget(QLabel("Email"))
+        layout.addWidget(make_label("Email", "fieldLabel"))
         self.email = QLineEdit(self.user["email"])
         self.email.setReadOnly(True)
         email_row = QHBoxLayout()
@@ -47,18 +61,37 @@ class ProfilePage(QWidget):
         email_row.addWidget(make_button("Change email", self.change_email,
                                         secondary=True))
         layout.addLayout(email_row)
+        layout.addWidget(make_label("We send a code to the new address to confirm it.",
+                                    "muted"))
+        layout.addSpacing(8)
+        layout.addWidget(self.divider())
+        layout.addSpacing(8)
 
         # --- Password ---
-        layout.addWidget(QLabel("Password"))
-        layout.addWidget(make_button("Change password", self.change_password,
-                                     secondary=True))
+        layout.addWidget(make_label("Password", "fieldLabel"))
+        password_row = QHBoxLayout()
+        password_row.addWidget(make_label("We send a code to your current email first.",
+                                          "muted"), 1)
+        password_row.addWidget(make_button("Change password", self.change_password,
+                                           secondary=True))
+        layout.addLayout(password_row)
 
         # --- Status message ---
         self.status = QLabel("")
         self.status.setWordWrap(True)
+        self.status.setMinimumHeight(20)         # the card does not jump when it shows
+        layout.addSpacing(8)
         layout.addWidget(self.status)
 
-        outer.addWidget(card)
+        outer.addWidget(card, 0, Qt.AlignTop | Qt.AlignLeft)
+        outer.addStretch()
+
+    @staticmethod
+    def divider():
+        line = QFrame()
+        line.setObjectName("divider")
+        line.setFixedHeight(1)
+        return line
 
     def show_status(self, text, ok=True):
         color = OK_COLOR if ok else ERR_COLOR

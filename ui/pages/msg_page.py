@@ -2,19 +2,21 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QLineEdit, QTextEdit, QPushButton,
-    QListWidget, QMessageBox, QApplication
+    QListWidget, QMessageBox, QApplication, QDialog
 )
 
 from services import message_service
 from core import session
 from services.auth_service import is_valid_email
-from ui.dialogs import MessageDialog, SentDialog, SendingDialog
+from ui.dialogs import (ContactPickerDialog, MessageDialog, SentDialog,
+                        SendingDialog)
 from services.message_service import SendError
 from ui.workers import Task
-from ui.widgets import make_label
+from ui.widgets import make_button, make_card, make_label
 
 log = logging.getLogger(__name__)
 
@@ -54,15 +56,22 @@ class DraftTab(QWidget):
         self.pending = None     # the message being sent by that task
 
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 16, 0, 0)
+        layout.setSpacing(16)
 
-        # Left: Message form
-        left = QVBoxLayout()
+        # Left: the message form in a card
+        left = make_card()
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(20, 18, 20, 18)
+        left_layout.setSpacing(12)
         self.form = self.build_form()
-        left.addWidget(self.form)
+        left_layout.addWidget(self.form, 1)
 
         buttons = QHBoxLayout()
+        buttons.addStretch()
 
         self.save_button = QPushButton("Save Draft")
+        self.save_button.setObjectName("secondary")
         self.save_button.clicked.connect(self.save_draft)
 
         self.send_button = QPushButton(f"Send {self.kind}")
@@ -71,20 +80,26 @@ class DraftTab(QWidget):
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.send_button)
 
-        left.addLayout(buttons)
+        left_layout.addLayout(buttons)
 
         self.sending_modal = None       # the pop-up shown while a send runs
 
-        # Right: Drafts and Sent tabs
-        right = QVBoxLayout()
+        # Right: Drafts and Sent tabs in a card
+        right = make_card()
+        right.setFixedWidth(330)
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(8, 8, 8, 8)
 
         self.message_tabs = QTabWidget()
+        self.message_tabs.setObjectName("inner")
 
         # Drafts tab
         draft_page = QWidget()
+        draft_page.setObjectName("clear")
         draft_layout = QVBoxLayout(draft_page)
 
         self.draft_list = QListWidget()
+        self.draft_list.setObjectName("plainList")
         self.draft_list.currentRowChanged.connect(
             self.load_draft
         )
@@ -98,9 +113,11 @@ class DraftTab(QWidget):
 
         # Sent tab
         sent_page = QWidget()
+        sent_page.setObjectName("clear")
         sent_layout = QVBoxLayout(sent_page)
 
         self.sent_list = QListWidget()
+        self.sent_list.setObjectName("plainList")
         self.sent_list.setToolTip("Double-click to open")
         self.sent_list.itemDoubleClicked.connect(self.view_sent)
 
@@ -115,10 +132,10 @@ class DraftTab(QWidget):
         self.message_tabs.addTab(draft_page, "Drafts")
         self.message_tabs.addTab(sent_page, "Sent")
 
-        right.addWidget(self.message_tabs)
+        right_layout.addWidget(self.message_tabs)
 
-        layout.addLayout(left, 1)
-        layout.addLayout(right)
+        layout.addWidget(left, 1)
+        layout.addWidget(right)
 
         self.saved_data = self.empty_data()
         self.load_saved()
@@ -148,6 +165,24 @@ class DraftTab(QWidget):
         recipient, subject, body = self.to_fields(entry["data"])
         MessageDialog(self.kind, recipient, subject, body,
                       entry["time"], self).exec()
+
+    # ---- Contacts ----
+
+    def contacts_row(self, field, need):
+        """A row with the input and a Contacts button that fills it from the
+        address book. need = "mobile" (SMS) or "email" (Email)."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(field, 1)
+        row.addWidget(make_button(
+            "Contacts", lambda _checked=False: self.pick_contact(field, need),
+            secondary=True))
+        return row
+
+    def pick_contact(self, field, need):
+        dialog = ContactPickerDialog(self.user["id"], need, self)
+        if dialog.exec() == QDialog.Accepted:
+            field.setText(dialog.value)
 
     # ---- Subclass methods ----
 
@@ -442,8 +477,10 @@ class SmsTab(DraftTab):
 
     def build_form(self):
         w = QWidget()
+        w.setObjectName("clear")
         l = QVBoxLayout(w)
         l.setContentsMargins(0, 0, 0, 0)
+        l.setSpacing(6)
 
         self.number = QLineEdit()
         self.number.setPlaceholderText(
@@ -457,8 +494,14 @@ class SmsTab(DraftTab):
         self.counter.setObjectName("muted")
         self.text.textChanged.connect(self.update_counter)
 
-        for x in (self.number, self.text, self.counter):
-            l.addWidget(x)
+        self.counter.setAlignment(Qt.AlignRight)
+
+        l.addWidget(make_label("Mobile number", "fieldLabel"))
+        l.addLayout(self.contacts_row(self.number, "mobile"))
+        l.addSpacing(6)
+        l.addWidget(make_label("Message", "fieldLabel"))
+        l.addWidget(self.text, 1)
+        l.addWidget(self.counter)
 
         return w
 
@@ -530,8 +573,10 @@ class EmailTab(DraftTab):
 
     def build_form(self):
         w = QWidget()
+        w.setObjectName("clear")
         l = QVBoxLayout(w)
         l.setContentsMargins(0, 0, 0, 0)
+        l.setSpacing(6)
 
         self.to = QLineEdit()
         self.to.setPlaceholderText("To")
@@ -542,8 +587,14 @@ class EmailTab(DraftTab):
         self.body = QTextEdit()
         self.body.setPlaceholderText("Message body...")
 
-        for x in (self.to, self.subject, self.body):
-            l.addWidget(x)
+        l.addWidget(make_label("To", "fieldLabel"))
+        l.addLayout(self.contacts_row(self.to, "email"))
+        l.addSpacing(6)
+        l.addWidget(make_label("Subject", "fieldLabel"))
+        l.addWidget(self.subject)
+        l.addSpacing(6)
+        l.addWidget(make_label("Message", "fieldLabel"))
+        l.addWidget(self.body, 1)
 
         return w
 
@@ -609,16 +660,40 @@ class MessagePage(QWidget):
         super().__init__()
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
 
         self.sms = SmsTab()
         self.email = EmailTab()
 
-        tabs = QTabWidget()
+        layout.addWidget(make_label("SMS and Email", "title"))
+        layout.addWidget(make_label("Write, save and send messages.", "muted"))
+        layout.addSpacing(10)
 
-        tabs.addTab(self.sms, "SMS")
-        tabs.addTab(self.email, "Email")
+        self.tab_pages = [self.sms, self.email]     # same order as the tabs
+        self.active = 0                              # the tab the user is on
 
-        layout.addWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("pageTabs")
+
+        self.tabs.addTab(self.sms, "SMS")
+        self.tabs.addTab(self.email, "Email")
+        self.tabs.currentChanged.connect(self.change_tab)
+
+        layout.addWidget(self.tabs)
+
+    def change_tab(self, index):
+        """Switching between SMS and Email asks about an unsaved draft first,
+        the same way leaving the page does. Cancel keeps the user on the tab."""
+        previous = self.active
+        if index == previous:
+            return
+        if not self.tab_pages[previous].ask_save():
+            self.tabs.blockSignals(True)             # go back without asking again
+            self.tabs.setCurrentIndex(previous)
+            self.tabs.blockSignals(False)
+            return
+        self.active = index
 
     def confirm_leave(self):
         return (
