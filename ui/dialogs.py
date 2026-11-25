@@ -6,10 +6,11 @@ screen, so the flow can still be tested without a mail account.
 """
 import random
 
-from PySide6.QtCore import Qt, QTimer, QRegularExpression
-from PySide6.QtGui import QRegularExpressionValidator
+from PySide6.QtCore import (Qt, QTimer, QRegularExpression, QRectF,
+                            QPropertyAnimation)
+from PySide6.QtGui import QRegularExpressionValidator, QPainter, QPen, QColor
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QPushButton, QTextEdit)
+                               QLineEdit, QPushButton, QTextEdit, QWidget)
 
 from services import message_service
 from services.auth_service import (email_taken, is_valid_email, mask_email,
@@ -329,3 +330,122 @@ class MessageDialog(QDialog):
 
         for w in (to, info, text, close):
             layout.addWidget(w)
+
+
+class Spinner(QWidget):
+    """A ring with a moving arc. Draws itself, so it needs no image or GIF."""
+
+    TRACK = QColor("#D6D5D0")
+    ARC = QColor("#4A4F57")
+
+    def __init__(self, size=52):
+        super().__init__()
+        self.setFixedSize(size, size)
+        self.angle = 0
+        self.timer = QTimer(self)
+        self.timer.setInterval(16)                 # about 60 frames a second
+        self.timer.timeout.connect(self.step)
+
+    def start(self):
+        self.timer.start()
+
+    def stop(self):
+        self.timer.stop()
+
+    def step(self):
+        self.angle = (self.angle + 6) % 360
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = QRectF(5, 5, self.width() - 10, self.height() - 10)
+        pen = QPen(self.TRACK, 5)
+        painter.setPen(pen)
+        painter.drawEllipse(rect)
+        pen.setColor(self.ARC)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(rect, -self.angle * 16, -100 * 16)    # 1/16 degree units
+
+
+class SendingDialog(QDialog):
+    """Modal "please wait" pop-up shown while a message is on its way.
+
+    The page opens it with start() and closes it with finish(). The user cannot
+    close it (Esc and Alt+F4 are ignored), because the send must not be repeated.
+    `status_text(seconds)` gives the line under the title, so the page decides
+    what it says as time passes."""
+
+    def __init__(self, title, status_text, parent=None):
+        super().__init__(parent)
+        self.setObjectName("sendingModal")
+        self.setStyleSheet("QDialog#sendingModal { border: 1px solid #D6D5D0; }")
+        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setFixedWidth(300)
+        self.status_text = status_text
+        self.ticks = 0
+        self.finishing = False
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 28, 30, 26)
+        layout.setSpacing(12)
+        self.spinner = Spinner()
+        heading = QLabel(title)
+        heading.setObjectName("heading")
+        heading.setAlignment(Qt.AlignCenter)
+        self.status = QLabel("")
+        self.status.setAlignment(Qt.AlignCenter)
+        self.status.setWordWrap(True)
+        hint = QLabel("Please keep the app open.")
+        hint.setObjectName("muted")
+        hint.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(self.spinner, 0, Qt.AlignHCenter)
+        for w in (heading, self.status, hint):
+            layout.addWidget(w)
+
+        self.timer = QTimer(self)
+        self.timer.setInterval(400)
+        self.timer.timeout.connect(self.tick)
+        self.fade = QPropertyAnimation(self, b"windowOpacity", self)
+        self.fade.setDuration(180)
+        self.fade.setStartValue(0.0)
+        self.fade.setEndValue(1.0)
+
+    def tick(self):
+        seconds = self.ticks * self.timer.interval() / 1000
+        dots = "." * (self.ticks % 4)
+        self.status.setText(f"{self.status_text(seconds)}{dots:<3}  ({int(seconds)}s)")
+        self.ticks += 1
+
+    def start(self):
+        """Show it centred over its window and fade it in (does not block)."""
+        self.tick()
+        self.timer.start()
+        self.spinner.start()
+        self.adjustSize()
+        parent = self.parentWidget()
+        if parent is not None:
+            self.move(parent.geometry().center() - self.rect().center())
+        self.setWindowOpacity(0.0)
+        self.show()
+        self.fade.start()
+
+    def finish(self):
+        self.finishing = True
+        self.timer.stop()
+        self.spinner.stop()
+        self.fade.stop()
+        self.hide()
+        self.deleteLater()
+
+    def reject(self):                 # Esc does nothing
+        pass
+
+    def closeEvent(self, event):
+        if self.finishing:
+            super().closeEvent(event)
+        else:
+            event.ignore()

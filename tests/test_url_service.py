@@ -139,8 +139,9 @@ def test_unrecognised_reply_is_logged_for_debugging(monkeypatch, caplog):
     (requests.exceptions.Timeout(), svc.MSG_TIMEOUT),
     (requests.exceptions.ConnectionError(), svc.MSG_NO_CONNECTION),
     (FakeReply(status=429), svc.MSG_RATE_LIMIT),
-    (FakeReply(status=500), svc.MSG_NO_CONNECTION),
-], ids=["timeout", "no-connection", "http-429", "http-500"])
+    (FakeReply(status=403), svc.MSG_BLOCKED),
+    (FakeReply(status=500), svc.MSG_SERVER),
+], ids=["timeout", "no-connection", "http-429", "http-403", "http-500"])
 def test_network_problems_become_readable_messages(monkeypatch, reply, message):
     monkeypatch.setattr(requests, "get", fake_get(reply))
     with pytest.raises(svc.ShortenError) as error:
@@ -335,3 +336,90 @@ def test_arranges_real_saved_links(users):
     links = svc.get_links(juan)
     assert [l["short_url"][-2:] for l in svc.arrange_links(links, sort_by="short", order=1)] == ["aa", "Zz"]
     assert [l["short_url"][-2:] for l in svc.arrange_links(links, "a.com")] == ["aa"]
+
+
+# ---------- Fallback to is.gd ----------
+
+ISGD_OK = {"shorturl": "https://is.gd/Ab1Cd2"}
+
+
+def route(ulvis=None, isgd=None, seen=None):
+    """Fake requests.get that answers differently for each shortener.
+    A shortener given as None must not be called at all."""
+    def _get(url, params=None, timeout=None):
+        if seen is not None:
+            seen.append((url, params))
+        reply = ulvis if url == svc.ULVIS_ENDPOINT else isgd
+        if reply is None:
+            raise AssertionError(f"unexpected call to {url}")
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    return _get
+
+
+def test_isgd_request_and_reply(monkeypatch):
+    seen = []
+    monkeypatch.setattr(requests, "get", route(isgd=FakeReply(ISGD_OK), seen=seen))
+    assert svc.isgd_shorten(LONG) == "https://is.gd/Ab1Cd2"
+    assert seen == [(svc.ISGD_ENDPOINT, {"format": "json", "url": LONG})]
+
+
+@pytest.mark.parametrize("reply, message", [
+    (FakeReply({"errorcode": 1, "errormessage": "the URL is on our internal blacklist"}, 400), svc.MSG_LINK_REFUSED),
+    (FakeReply({"errorcode": 4, "errormessage": "Sorry, an error occurred"}, 503), svc.MSG_SERVER),
+    (FakeReply({"errorcode": 3, "errormessage": "Rate limit exceeded"}, 400), svc.MSG_RATE_LIMIT),
+    (FakeReply("<html>oops</html>", 200), svc.MSG_UNEXPECTED),
+    (FakeReply({"hello": "world"}, 200), svc.MSG_UNEXPECTED),
+    (FakeReply("", 503), svc.MSG_SERVER),
+    (requests.exceptions.Timeout(), svc.MSG_TIMEOUT),
+    (requests.exceptions.ConnectionError(), svc.MSG_NO_CONNECTION),
+], ids=["blacklisted", "service-error", "rate-limit", "html", "no-fields", "http-503", "timeout", "no-connection"])
+def test_isgd_problems_become_readable_messages(monkeypatch, reply, message):
+    monkeypatch.setattr(requests, "get", route(isgd=reply))
+    with pytest.raises(svc.ShortenError) as error:
+        svc.isgd_shorten(LONG)
+    assert str(error.value) == message
+
+
+def test_shorten_uses_ulvis_and_never_calls_isgd_when_ulvis_works(monkeypatch):
+    monkeypatch.setattr(requests, "get", route(ulvis=FakeReply("https://ulvis.net/abc123")))
+    assert svc.shorten(LONG) == "https://ulvis.net/abc123"
+
+
+@pytest.mark.parametrize("ulvis", [
+    FakeReply(status=403),                           # Cloudflare block
+    FakeReply(status=500),
+    FakeReply(status=429),
+    FakeReply({"hello": "world"}),                   # unrecognised reply
+    requests.exceptions.Timeout(),
+    requests.exceptions.ConnectionError(),
+], ids=["blocked", "server-error", "rate-limit", "unrecognised", "timeout", "no-connection"])
+def test_shorten_falls_back_to_isgd(monkeypatch, ulvis):
+    monkeypatch.setattr(requests, "get", route(ulvis=ulvis, isgd=FakeReply(ISGD_OK)))
+    assert svc.shorten(LONG) == "https://is.gd/Ab1Cd2"
+
+
+def test_a_link_ulvis_calls_invalid_is_not_retried(monkeypatch):
+    bad = FakeReply({"status": "error", "error": "Invalid url"})
+    monkeypatch.setattr(requests, "get", route(ulvis=bad))       # is.gd must not be called
+    with pytest.raises(svc.ShortenError) as error:
+        svc.shorten(LONG)
+    assert str(error.value) == svc.MSG_INVALID_URL
+
+
+def test_when_both_fail_the_last_error_is_shown(monkeypatch):
+    monkeypatch.setattr(requests, "get", route(
+        ulvis=FakeReply(status=403),
+        isgd=FakeReply({"errorcode": 1, "errormessage": "blacklist"}, 400)))
+    with pytest.raises(svc.ShortenError) as error:
+        svc.shorten(LONG)
+    assert str(error.value) == svc.MSG_LINK_REFUSED
+
+
+def test_nothing_is_saved_when_both_fail(monkeypatch, users):
+    monkeypatch.setattr(requests, "get", route(
+        ulvis=requests.exceptions.Timeout(), isgd=requests.exceptions.Timeout()))
+    with pytest.raises(svc.ShortenError):
+        svc.shorten(LONG)
+    assert svc.get_links(users[0]) == []

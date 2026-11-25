@@ -9,7 +9,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
 
-ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+from core.paths import resource_path
+
+ASSETS = resource_path("assets")
 LOGO_PATH = os.path.join(ASSETS, "logo.png")     # the capybara, transparent background
 ICON_PATH = os.path.join(ASSETS, "icon.png")     # square version for window icons
 
