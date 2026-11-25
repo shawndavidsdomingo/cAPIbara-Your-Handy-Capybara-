@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="cAPIbara Logo" width="160" />
+</p>
+
 # cAPIbara: Your Handy Capybara
 
 A desktop utility app built with Python, PySide6 and SQLite for the ITL313-18 (SIA 2 Lab) final term mini project. The name is a pun on API, because the app talks to outside services.
