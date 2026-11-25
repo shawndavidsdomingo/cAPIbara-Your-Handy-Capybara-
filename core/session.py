@@ -1,4 +1,4 @@
-"""Who is logged in right now (guide section 3.4)."""
+"""Who is logged in right now"""
 
 _current = None
 
