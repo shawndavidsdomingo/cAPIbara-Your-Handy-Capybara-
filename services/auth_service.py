@@ -1,7 +1,9 @@
-"""Register, login and profile updates (guide sections 3 and 4).
+"""Register, login and profile updates.
 
-The GUI calls these functions and never touches SQL. Passwords are stored
-only as a random salt + PBKDF2-SHA256 hash. Every statement uses ? placeholders.
+The GUI calls these functions and never touches SQL.
+Passwords are stored
+only as a random salt + PBKDF2-SHA256 hash.
+Every statement uses ? placeholders.
 Functions raise ValueError with a message that is safe to show to the user.
 """
 import hashlib
@@ -17,7 +19,7 @@ MIN_PASSWORD = 8
 PUBLIC_COLUMNS = "id, username, full_name, email"   # never select salt/hash for the GUI
 
 
-# ---------- Validators (moved from demo_store.py) ----------
+# ---------- Validators  ----------
 
 def is_valid_email(email):
     return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
@@ -70,6 +72,21 @@ def get_user(user_id):
     return dict(row) if row else None
 
 
+def find_user_by_login(login):
+    """The account for a username OR an email (any case), or None.
+
+    A username can never contain "@" and an email always does, so one text
+    can only ever match one account. Used by "Forgot username or password"."""
+    login = (login or "").strip()
+    if not login:
+        return None
+    with connection() as conn:
+        row = conn.execute(
+            f"SELECT {PUBLIC_COLUMNS} FROM users WHERE username = ? OR email = ?",
+            (login, login)).fetchone()
+    return dict(row) if row else None
+
+
 # ---------- Register and login ----------
 
 def register_user(username, full_name, email, password):
@@ -96,18 +113,22 @@ def register_user(username, full_name, email, password):
                 "VALUES (?, ?, ?, ?, ?)",
                 (username, full_name, email, salt, pw_hash))
             return cursor.lastrowid
-    except sqlite3.IntegrityError:            # lost a race with another insert
+    except sqlite3.IntegrityError:
         raise ValueError("That username or email is already taken.")
 
 
-def verify_login(username, password):
-    """Return the user dict, or None. Wrong user and wrong password look the same."""
+def verify_login(login, password):
+    """Log in with a username OR an email. Return the user dict, or None.
+
+    Wrong user and wrong password look the same."""
+    login = login.strip()
     with connection() as conn:
         row = conn.execute(
-            f"SELECT {PUBLIC_COLUMNS}, salt, password_hash FROM users WHERE username = ?",
-            (username.strip(),)).fetchone()
+            f"SELECT {PUBLIC_COLUMNS}, salt, password_hash FROM users "
+            "WHERE username = ? OR email = ?",
+            (login, login)).fetchone()
     if row is None:
-        hash_password(password)               # similar timing for unknown users
+        hash_password(password)
         return None
     if not verify_password(password, row["salt"], row["password_hash"]):
         return None
@@ -150,3 +171,19 @@ def update_password(user_id, old_password, new_password):
         salt, pw_hash = hash_password(new_password)
         conn.execute("UPDATE users SET salt = ?, password_hash = ? WHERE id = ?",
                      (salt, pw_hash, user_id))
+
+
+def reset_password(user_id, new_password):
+    """Set a new password WITHOUT the old one (the "forgot password" flow).
+
+    Only call this after the person proved they own the account's email with
+    the one-time code. Raises ValueError if the password is invalid."""
+    if len(new_password) < MIN_PASSWORD:
+        raise ValueError("Password must be at least 8 characters.")
+    salt, pw_hash = hash_password(new_password)
+    with connection() as conn:
+        cursor = conn.execute(
+            "UPDATE users SET salt = ?, password_hash = ? WHERE id = ?",
+            (salt, pw_hash, user_id))
+        if cursor.rowcount == 0:
+            raise ValueError("That account no longer exists.")

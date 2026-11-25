@@ -1,20 +1,48 @@
 import csv
 import json
+import re
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QSpinBox,
-    QComboBox, QCheckBox, QGroupBox, QPushButton, QTableWidget,
+    QCheckBox, QPushButton, QSizePolicy, QTableWidget,
     QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem,
-    QFileDialog, QMessageBox, QAbstractItemView)
+    QFileDialog, QMessageBox, QAbstractItemView, QDialog)
 
 from services import fake_service
 from core import session
+from core.zoom import px
 from services.fake_service import FakeDataError, FIELDS
-from ui.widgets import make_label
+from ui.rename_dialog import RenameGenerationDialog
+from ui.widgets import SegmentedControl, make_card, make_label
 from ui.workers import Task
 
 PICKER_COLUMNS = 5      # checkboxes per row in the field picker
+
+
+def safe_filename(name):
+    """A batch name made safe for a file name (no \\ / : * ? " < > |)."""
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "_", name).strip(" .")
+    return cleaned or "generation"
+
+
+def sheet_title(name):
+    """Excel sheet names cannot have \\ / ? * [ ] : and stop at 31 characters."""
+    return re.sub(r"[\\/*?:\[\]]+", "_", name)[:31].strip() or "Data"
+
+
+class ElidedLabel(QLabel):
+    """A label that ends long text with an ellipsis instead of widening its row."""
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        self.full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.setText(self.fontMetrics().elidedText(
+            self.full_text, Qt.TextElideMode.ElideRight, self.width()))
 
 # what the user can export to: name -> (file extension, save-dialog filter)
 EXPORT_FORMATS = {
@@ -40,13 +68,18 @@ class FakeDataPage(QWidget):
         self.checks = {}         # field key -> its checkbox (filled by the picker)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(make_label("Fake Data", "title"))
+        layout.addWidget(make_label(
+            "Generate sample people, keep them, and export them.", "muted"))
         layout.addWidget(self.build_field_picker())
         layout.addLayout(self.build_top_bar())
-        self.status = make_label("", "muted")
-        layout.addWidget(self.status)
+        layout.addLayout(self.build_result_bar())
 
         body = QHBoxLayout()
-        body.addLayout(self.build_history_panel())
+        body.setSpacing(16)
+        body.addWidget(self.build_history_panel())
         self.table = self.build_table()
         body.addWidget(self.table, 1)
         layout.addLayout(body, 1)
@@ -56,10 +89,15 @@ class FakeDataPage(QWidget):
     # ---------- Building the screen ----------
 
     def build_field_picker(self):
-        box = QGroupBox("What data should be generated?")
+        box = make_card()
         outer = QVBoxLayout(box)
+        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setSpacing(10)
+        outer.addWidget(make_label("What data should be generated?", "bold"))
 
         grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(8)
         for i, key in enumerate(FIELDS):
             check = QCheckBox(fake_service.label(key))
             check.setChecked(key in fake_service.DEFAULT_FIELDS)
@@ -86,53 +124,105 @@ class FakeDataPage(QWidget):
 
     def build_top_bar(self):
         top = QHBoxLayout()
-        top.addWidget(QLabel("Number of records:"))
+        top.setSpacing(10)
+        top.addWidget(make_label("Number of records", "fieldLabel"))
 
         self.count = QSpinBox()
         self.count.setRange(fake_service.MIN_RECORDS, fake_service.MAX_RECORDS)
         self.count.setValue(fake_service.MIN_RECORDS)
 
         top.addWidget(self.count)
-        top.addWidget(QLabel("Gender:"))
-        self.gender = QComboBox()
-        self.gender.addItems(list(fake_service.GENDERS))
+        top.addWidget(make_label("Gender", "fieldLabel"))
+        self.gender = SegmentedControl(list(fake_service.GENDERS))
         top.addWidget(self.gender)
 
         self.generate_button = QPushButton("Generate")
         self.generate_button.clicked.connect(self.generate)
-        self.export_format = QComboBox()
-        self.export_format.addItems(list(EXPORT_FORMATS))
+        top.addWidget(self.generate_button)
+        top.addStretch()                      # the export tools sit after this, at the right
+        self.top_bar = top
+        return top
+
+    def build_result_bar(self):
+        """The status message, plus the export tools when the Generate row is too full.
+
+        The export tools live in one box (self.export_box). On a wide window the
+        box sits at the right end of the Generate row; on a narrow one it drops
+        to the right end of this row, just above the table (see fit_export)."""
+        bar = QHBoxLayout()
+        bar.setSpacing(10)
+
+        self.status = make_label("", "muted")
+        self.status.setWordWrap(True)
+        self.status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        bar.addWidget(self.status, 1)
+        self.result_bar = bar
+
+        self.export_box = QWidget()
+        self.export_box.setObjectName("clear")        # transparent, see theme.py
+        box = QHBoxLayout(self.export_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(10)
+
+        self.export_format = SegmentedControl(list(EXPORT_FORMATS))
         export = QPushButton("Export")
+        export.setObjectName("secondary")
         export.clicked.connect(self.export_data)
         clear = QPushButton("Clear All")
         clear.setObjectName("secondary")
         clear.clicked.connect(self.clear_all)
 
-        for w in (self.generate_button, QLabel("Export as:"),
+        for w in (make_label("Export as", "fieldLabel"),
                   self.export_format, export, clear):
-            top.addWidget(w)
-        top.addStretch()
-        return top
+            box.addWidget(w)
+
+        self.export_on_top = False
+        bar.addWidget(self.export_box)
+        return bar
+
+    def fit_export(self):
+        """Keep the export tools on the Generate row when there is room for them."""
+        export_width = self.export_box.sizeHint().width()
+        spacing = self.top_bar.spacing()
+        left = self.top_bar.sizeHint().width()
+        if self.export_on_top:
+            left -= export_width + spacing          # measure the Generate row alone
+        want_top = self.width() >= left + spacing + export_width + 24
+        if want_top == self.export_on_top:
+            return
+        old, new = ((self.top_bar, self.result_bar) if self.export_on_top
+                    else (self.result_bar, self.top_bar))
+        old.removeWidget(self.export_box)
+        new.addWidget(self.export_box)
+        self.export_on_top = want_top
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_export()
 
     def build_history_panel(self):
-        left = QVBoxLayout()
-        left.addWidget(QLabel("Generation History"))
+        card = make_card()
+        card.setFixedWidth(px(290))
+        left = QVBoxLayout(card)
+        left.setContentsMargins(12, 14, 12, 12)
+        left.setSpacing(8)
+        left.addWidget(make_label("Generation History", "bold"))
 
         self.history = QListWidget()
         self.history.setObjectName("history")      # styled in theme.py
-        self.history.setFixedWidth(270)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.history.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.history.currentRowChanged.connect(self.show_generation)
+        self.history.itemDoubleClicked.connect(self.rename_clicked_item)
         left.addWidget(self.history)
-        return left
+        return card
 
     def build_table(self):
         table = QTableWidget(0, 0)           # columns follow the batch's fields
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         header = table.horizontalHeader()
         header.sectionClicked.connect(self.sort_by_column)
-        header.setMinimumSectionSize(60)
+        header.setMinimumSectionSize(px(60))
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
         return table
@@ -145,7 +235,8 @@ class FakeDataPage(QWidget):
         lay.setContentsMargins(10, 6, 6, 6)
         lay.setSpacing(6)
 
-        name = QLabel(gen["name"])
+        row.setToolTip(f"{gen['name']}\nDouble-click to rename")
+        name = ElidedLabel(gen["name"])
         name.setObjectName("bold")
         details = QLabel(f"{gen['time']}  ·  {gen['total']} records")
         details.setObjectName("muted")
@@ -160,12 +251,21 @@ class FakeDataPage(QWidget):
         trash = QPushButton("🗑")
         trash.setObjectName("trash")
         trash.setToolTip("Delete this generation")
-        trash.setFixedSize(34, 30)
+        trash.setFixedSize(px(34), px(30))
         trash.setCursor(Qt.CursorShape.PointingHandCursor)
         trash.clicked.connect(
             lambda checked=False, g=gen: self.delete_generation(g))
 
+        edit = QPushButton("✏")
+        edit.setObjectName("edit")
+        edit.setToolTip("Rename this generation")
+        edit.setFixedSize(px(34), px(30))
+        edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit.clicked.connect(
+            lambda checked=False, g=gen: self.rename_generation(g))
+
         lay.addLayout(text, 1)
+        lay.addWidget(edit, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(trash, 0, Qt.AlignmentFlag.AlignVCenter)
 
         item = QListWidgetItem()
@@ -248,6 +348,18 @@ class FakeDataPage(QWidget):
         task = self.task
         if task is not None:
             task.wait()          # the batch is saved inside the task itself
+
+    # ---------- Rename ----------
+
+    def rename_clicked_item(self, item):
+        index = self.history.row(item)
+        if 0 <= index < len(self.generations):
+            self.rename_generation(self.generations[index])
+
+    def rename_generation(self, gen):
+        dialog = RenameGenerationDialog(self.user["id"], gen, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.load_history(select_id=gen["id"])      # keep the same batch selected
 
     # ---------- Delete / clear ----------
 
@@ -343,7 +455,8 @@ class FakeDataPage(QWidget):
         kind = self.export_format.currentText()
         extension, file_filter = EXPORT_FORMATS[kind]
         path, _ = QFileDialog.getSaveFileName(
-            self, f"Export to {kind}", f"{gen['name']}{extension}", file_filter)
+            self, f"Export to {kind}",
+            f"{safe_filename(gen['name'])}{extension}", file_filter)
         if not path:
             return
         if not path.lower().endswith(extension):
@@ -376,7 +489,7 @@ class FakeDataPage(QWidget):
             return False
         wb = Workbook()
         ws = wb.active
-        ws.title = title
+        ws.title = sheet_title(title)
         ws.append(labels)
         for row in table_rows:
             ws.append(row)

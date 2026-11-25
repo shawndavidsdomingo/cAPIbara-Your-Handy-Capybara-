@@ -1,4 +1,4 @@
-"""Fake person data from the FakerAPI (https://fakerapi.it), plus storage.
+"""Fake person data from the FakerAPI (https://fakerapi.it)
 
 ALL FakerAPI-specific code lives in FIELDS and fetch_persons(), so the rest of
 the app never changes if the API does. The page only sees rows (dicts) or a
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 ENDPOINT = "https://fakerapi.it/api/v1/persons"
 TIMEOUT = 20
-MIN_RECORDS = 10           # project rule: at least 10 records
+MIN_RECORDS = 10           # at least 10 records
 MAX_RECORDS = 1000         # FakerAPI's own limit per request
 GENDERS = {"Any": None, "Male": "male", "Female": "female"}
 
@@ -35,6 +35,8 @@ MSG_NO_CONNECTION = "Could not reach the data service. Check your connection."
 MSG_TIMEOUT = "The data service took too long. Try again."
 MSG_RATE_LIMIT = "Too many requests. Please wait a moment and try again."
 MSG_UNEXPECTED = "The data service sent an unexpected reply."
+MAX_NAME = 40              # longest name a user can give a batch
+MSG_NAME_TAKEN = "Another generation is already named \"{}\"."
 
 
 class FakeDataError(Exception):
@@ -149,9 +151,41 @@ def create_generation(user_id, field_keys, rows):
         return generation_id
 
 
+def default_name(number):
+    return f"Gen {number}"
+
+
+def rename_generation(user_id, generation_id, name):
+    """Give a batch its own name. An empty name goes back to "Gen N".
+
+    Raises ValueError (safe to show) if the name is too long, another batch of
+    this user already has it, or the batch no longer exists."""
+    name = " ".join((name or "").split())
+    if len(name) > MAX_NAME:
+        raise ValueError(f"The name is too long (up to {MAX_NAME} characters).")
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id, number, name FROM fake_generations WHERE user_id = ?",
+            (user_id,)).fetchall()
+        mine = next((row for row in rows if row["id"] == generation_id), None)
+        if mine is None:
+            raise ValueError("That generation no longer exists.")
+        final = name or default_name(mine["number"])
+        for row in rows:
+            other = row["name"] or default_name(row["number"])
+            if row["id"] != generation_id and other.casefold() == final.casefold():
+                raise ValueError(MSG_NAME_TAKEN.format(final))
+        conn.execute(
+            "UPDATE fake_generations SET name = ? WHERE id = ? AND user_id = ?",
+            (name, generation_id, user_id))
+
+
 def get_generations(user_id):
-    """The user's batches, oldest first: id, name ("Gen 3"), time, fields, total."""
-    sql = ("SELECT g.id, g.number, g.fields, "
+    """The user's batches, oldest first: id, name, time, fields, total.
+
+    The name is the user's own if they gave one, otherwise "Gen 3". `number`
+    and `custom` tell the rename dialog which default to show."""
+    sql = ("SELECT g.id, g.number, g.name, g.fields, "
            "datetime(g.created_at, 'localtime') AS created_at, "
            "COUNT(r.id) AS total "
            "FROM fake_generations g "
@@ -159,7 +193,9 @@ def get_generations(user_id):
            "WHERE g.user_id = ? GROUP BY g.id ORDER BY g.id")
     with connection() as conn:
         rows = conn.execute(sql, (user_id,)).fetchall()
-    return [{"id": row["id"], "name": f"Gen {row['number']}",
+    return [{"id": row["id"], "number": row["number"],
+             "name": row["name"] or default_name(row["number"]),
+             "custom": bool(row["name"]),
              "time": row["created_at"], "fields": json.loads(row["fields"]),
              "total": row["total"]} for row in rows]
 

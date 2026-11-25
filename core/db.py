@@ -1,6 +1,6 @@
-"""SQLite connection helper and schema (guide section 2).
+"""SQLite connection helper and schema
 
-capibara.db is created next to the app (the project's top folder, or the .exe) on first launch by init_db().
+capibara.db is created next to the app (the project's top folder, or the .exe)
 Foreign keys are switched on for every connection.
 """
 import os
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS fake_generations (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id),
     number     INTEGER NOT NULL,              -- the "3" in "Gen 3", per user
+    name       TEXT NOT NULL DEFAULT '',      -- the user's own name; empty = "Gen <number>"
     fields     TEXT NOT NULL,                 -- JSON list of the fields picked
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,6 +67,17 @@ CREATE TABLE IF NOT EXISTS fake_records (
     data          TEXT NOT NULL               -- JSON object: field key -> value
 );
 CREATE INDEX IF NOT EXISTS idx_fakerec_gen ON fake_records(generation_id);
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id),
+    name       TEXT NOT NULL,
+    mobile     TEXT NOT NULL DEFAULT '',      -- 09XXXXXXXXX, or empty
+    email      TEXT NOT NULL DEFAULT '',      -- or empty (one of the two is required)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    CHECK (mobile != '' OR email != '')
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts(user_id);
 """
 
 
@@ -87,6 +99,15 @@ def connection():
         conn.close()
 
 
+def _migrate(conn):
+    """Add columns that a database made by an older version does not have yet."""
+    columns = [row["name"] for row in conn.execute("PRAGMA table_info(fake_generations)")]
+    if "name" not in columns:
+        conn.execute("ALTER TABLE fake_generations "
+                     "ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+
+
 def init_db():
     with connection() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
