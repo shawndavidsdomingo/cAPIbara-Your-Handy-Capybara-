@@ -1,6 +1,6 @@
 """One small helper that runs a function on a background thread.
 
-Network calls must never run on the UI thread. Usage:
+Network calls must never run on the UI thread (guide rule). Usage:
 
     task = Task(message_service.send_email, to, subject, body,
                 safe=(SendError,), reply_to=(email, name))

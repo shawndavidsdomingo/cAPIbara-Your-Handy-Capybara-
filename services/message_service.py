@@ -1,4 +1,4 @@
-"""Email sending through Brevo, and message storage.
+"""Email sending through Brevo, and message storage (guide section 6).
 
 Every Brevo detail lives here, so the rest of the app only sees a message id
 or a SendError with a readable message.
@@ -11,8 +11,7 @@ How sending works
   their own address goes in Reply-To so replies reach them.
 - Every email is sent as plain text plus a small HTML version with the cAPIbara
   header. The sender's own spacing (indents, blank lines) is kept in both, and a
-  signed-in user's email ends with "Sent from <registered name> <registered email>".
-  If LOGO_URL (a public https link) is set, the header is that picture.
+  signed-in user's email ends with "Sent from <registered name> <registered email>". If LOGO_URL (a public https link) is set, the header is that picture.
 - The API key comes from .env / the environment (see config.py). It is never
   logged and never committed.
 
@@ -402,7 +401,7 @@ def save_draft(user_id, kind, recipient, subject, body):
 
 
 def update_draft(user_id, message_id, recipient, subject, body):
-    """Overwrite a draft. True if it was found."""
+    """Overwrite a draft (its saved time moves to now). True if it was found."""
     with connection() as conn:
         cursor = conn.execute(
             "UPDATE messages SET recipient = ?, subject = ?, body = ?, "

@@ -1,22 +1,29 @@
-"""Settings and secrets, read from environment variables or a .env file."""
+"""Settings and secrets, read from environment variables or a .env file.
+
+The .env file sits next to the app (the project's top folder, or the .exe) and is NEVER committed (it is in
+.gitignore). Copy .env.example to .env and fill in your own values.
+Values already set in the real environment win over the file. When the app is
+packaged with `--add-data ".env;."`, a copy of .env travels inside it (anyone with
+the app folder can read it, so only share the build with people you trust).
+"""
 import os
 
 from core.paths import app_folder, resource_path
 
-ENV_PATH = os.path.join(app_folder(), ".env")
-BUNDLED_ENV_PATH = resource_path(".env")
+ENV_PATH = os.path.join(app_folder(), ".env")             # next to the app: wins if present
+BUNDLED_ENV_PATH = resource_path(".env")                    # copy packed inside the .exe by PyInstaller
 
 DEFAULTS = {
-    "SENDER_EMAIL": "noreply@capibara-shawn-neo.online",   # address the app sends from
+    "SENDER_EMAIL": "noreply@capibara-shawn-neo.online",   # the one address the app sends from
     "SENDER_NAME": "cAPIbara",
-    "LOGO_URL": "",    # logo shown
+    "LOGO_URL": "",    # public https link to the logo shown at the top of every email
     "TEXTBEE_BASE_URL": "https://api.textbee.dev/api/v1",
-    "TEXTBEE_DEVICE_ID": "",   # which phone send TextBee device
+    "TEXTBEE_DEVICE_ID": "",   # optional: which phone sends. Empty = your default TextBee device
 }
 
 
 def parse_env(text):
-    """KEY=VALUE lines -> dict."""
+    """KEY=VALUE lines -> dict. Blank lines and # comments are skipped."""
     values = {}
     for line in text.splitlines():
         line = line.strip()
@@ -41,8 +48,9 @@ def load_env(path=ENV_PATH):
 
 
 def get(name):
+    """A setting, read at call time. Falls back to DEFAULTS, then to ''."""
     return (os.environ.get(name) or DEFAULTS.get(name, "")).strip()
 
 
-load_env()
-load_env(BUNDLED_ENV_PATH)
+load_env()                      # a .env next to the app wins...
+load_env(BUNDLED_ENV_PATH)      # ...otherwise the one packed inside it is used
