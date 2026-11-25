@@ -17,14 +17,22 @@ A desktop utility app built with Python, PySide6 and SQLite for the ITL313-18 (S
 | URL Shortening with history, search, sorting and local click counts | Ulvis, with is.gd as a backup |
 | SMS and Email: drafts, sending and history | TextBee (SMS), Brevo (Email) |
 | Contacts: a personal address book the SMS and Email tabs pick from | built in |
-| Fake Data generation: 10+ fields, 10 to 1000 records per batch, saved, renamable, exported to Excel or CSV | FakerAPI |
+| Fake Data generation: 10+ fields, 10 to 1000 records per batch, saved, renamable, exported to Excel, CSV, or JSON | FakerAPI |
 | Dashboard: totals, a 7-day activity chart and an all-time donut chart, all from SQL | built in |
 | Zoom (90% to 200%) with Ctrl + mouse wheel or Ctrl + / - / 0, remembered between launches | built in |
 | Terms and Conditions shown at sign-up | built in |
 
-Without a `BREVO_API_KEY` the OTP dialog runs in demo mode: the code is shown on screen and no email is sent. Without a `TEXTBEE_API_KEY` the SMS tab stays in demo mode too.
+Without a `BREVO_API_KEY` the OTP dialog runs in demo mode: the code is shown on screen and no email is sent, and the Email tab shows a "not set up" message when you try to send. Without a `TEXTBEE_API_KEY` the SMS tab stays in demo mode: nothing leaves the app.
 
 For the forgot-password flow, an unknown email or username gets the same "code sent" screen as a real one, so the app never reveals which accounts exist.
+
+## Download (Windows)
+
+Get `cAPIbara.exe` from the [latest release](https://github.com/shawndavidsdomingo/cAPIbara-Your-Handy-Capybara-/releases/latest) and double-click it. No Python needed. Windows may show a SmartScreen warning because the app is not code-signed: choose **More info**, then **Run anyway**.
+
+To send real emails and texts, put a `.env` file in the **same folder as the exe** (see [Settings and secrets](#settings-and-secrets-env)). Without it, the app runs in demo mode. `capibara.db` and `settings.json` are created in that folder too.
+
+On macOS or Linux, run it from source (see Setup below).
 
 ## Tech stack
 
@@ -32,6 +40,7 @@ For the forgot-password flow, an unknown email or username gets the same "code s
 - PySide6 (GUI)
 - SQLite through the built-in `sqlite3` module (nothing extra to install)
 - `requests` (Ulvis, is.gd, FakerAPI, Brevo, TextBee), `openpyxl` (Excel export), `pytest` (tests)
+- PyInstaller (only to build the Windows exe)
 
 ## Requirements
 
@@ -60,7 +69,6 @@ Optional: install [DB Browser for SQLite](https://sqlitebrowser.org/) to look in
 ```
 git clone <repo-url>
 cd <repo-folder>
-git checkout dev
 python -m venv venv
 venv\Scripts\activate          (Windows)
 source venv/bin/activate       (macOS / Linux)
@@ -69,7 +77,7 @@ pip install -r requirements.txt
 
 ### Settings and secrets (`.env`)
 
-Create a `.env` file next to `main.py` (it is never committed). All keys are optional; a missing key only turns that feature into demo mode or shows a clear message.
+Copy `env.example` to a new file named `.env` next to `main.py` (the file name starts with a dot and has no `.txt` at the end). The `.env` file is never committed. All keys are optional; a missing key only turns that feature into demo mode or shows a clear message.
 
 ```
 BREVO_API_KEY=            # sends emails and OTP codes
@@ -91,6 +99,15 @@ python main.py
 
 `capibara.db` (data) and `settings.json` (zoom level) are created next to `main.py` on first launch. There is no default account, so click **Create an account** and register.
 
+## Build the exe
+
+```
+pip install pyinstaller
+pyinstaller --noconfirm --windowed --onefile --name cAPIbara --icon assets/icon.ico --add-data "assets;assets" main.py
+```
+
+The result is `dist/cAPIbara.exe`. Do not bundle your `.env` into it: keep it next to the exe so your keys stay out of the file.
+
 ## Run the tests
 
 ```
@@ -103,7 +120,10 @@ Tests use a temporary database, so your real `capibara.db` is never touched.
 
 ```
 main.py                 entry point: creates the database, applies the theme
-assets/                 logo.png, icon.png
+env.example             template for the .env file
+conftest.py, pytest.ini test setup
+requirements.txt        packages to install
+assets/                 logo.png, icon.png, icon.ico
 core/
   config.py             settings and secrets from the environment or .env
   db.py                 SQLite connection helper and schema
