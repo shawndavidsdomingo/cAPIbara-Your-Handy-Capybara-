@@ -23,8 +23,8 @@ def key(monkeypatch):
     monkeypatch.delenv("TEXTBEE_DEVICE_ID", raising=False)
     monkeypatch.setattr(ms, "SMS_POLL", 0)
     monkeypatch.setattr(ms, "SMS_WAIT", 0)
-    # by default the phone reports "sent"; tests override ms.requests.get when needed
-    monkeypatch.setattr(ms.requests, "get", lambda *a, **k: status_reply("sent"))
+    # by default the phone reports "sent"; tests override requests.get when needed
+    monkeypatch.setattr(requests, "get", lambda *a, **k: status_reply("sent"))
 
 
 QUEUED = reply(200, {"data": {"success": True, "smsBatchId": "b1"}})
@@ -33,39 +33,39 @@ QUEUED = reply(200, {"data": {"success": True, "smsBatchId": "b1"}})
 def test_phone_failure_is_an_error():
     item = status_reply("failed", errorCode="CARRIER_0x44",
                         errorMessage="The carrier could not give the SMS the service it needs.")
-    with patch.object(ms.requests, "post", return_value=QUEUED), \
-            patch.object(ms.requests, "get", return_value=item) as get:
+    with patch.object(requests, "post", return_value=QUEUED), \
+            patch.object(requests, "get", return_value=item) as get:
         with pytest.raises(ms.SendError, match="carrier could not give"):
             ms.send_sms("09171234567", "hi")
     assert get.call_args[1]["params"] == {"smsBatchId": "b1"}
 
 
 def test_known_error_code_and_fallback():
-    with patch.object(ms.requests, "post", return_value=QUEUED):
-        with patch.object(ms.requests, "get", return_value=status_reply("failed", errorCode="4")):
+    with patch.object(requests, "post", return_value=QUEUED):
+        with patch.object(requests, "get", return_value=status_reply("failed", errorCode="4")):
             with pytest.raises(ms.SendError, match="no mobile service"):
                 ms.send_sms("09171234567", "hi")
-        with patch.object(ms.requests, "get", return_value=status_reply("failed")):
+        with patch.object(requests, "get", return_value=status_reply("failed")):
             with pytest.raises(ms.SendError) as e:
                 ms.send_sms("09171234567", "hi")
         assert str(e.value) == ms.MSG_SMS_PHONE_FAILED
 
 
 def test_still_queued_or_unreadable_status_counts_as_accepted():
-    with patch.object(ms.requests, "post", return_value=QUEUED):
-        with patch.object(ms.requests, "get", return_value=status_reply("pending")):
+    with patch.object(requests, "post", return_value=QUEUED):
+        with patch.object(requests, "get", return_value=status_reply("pending")):
             assert ms.send_sms("09171234567", "hi") == "b1"
-        with patch.object(ms.requests, "get", side_effect=requests.exceptions.ConnectionError):
+        with patch.object(requests, "get", side_effect=requests.exceptions.ConnectionError):
             assert ms.send_sms("09171234567", "hi") == "b1"
-        with patch.object(ms.requests, "get", return_value=reply(500)):
+        with patch.object(requests, "get", return_value=reply(500)):
             assert ms.send_sms("09171234567", "hi") == "b1"
 
 
 def test_waits_until_the_phone_answers(monkeypatch):
     monkeypatch.setattr(ms, "SMS_WAIT", 5)
     answers = iter([status_reply("pending"), status_reply("dispatched"), status_reply("sent")])
-    with patch.object(ms.requests, "post", return_value=QUEUED), \
-            patch.object(ms.requests, "get", side_effect=lambda *a, **k: next(answers)) as get:
+    with patch.object(requests, "post", return_value=QUEUED), \
+            patch.object(requests, "get", side_effect=lambda *a, **k: next(answers)) as get:
         assert ms.send_sms("09171234567", "hi") == "b1"
     assert get.call_count == 3
 
@@ -78,7 +78,7 @@ def test_validation():
 
 
 def test_success_request_shape():
-    with patch.object(ms.requests, "post",
+    with patch.object(requests, "post",
                       return_value=reply(200, {"data": {"success": True, "smsBatchId": "b1"}})) as post:
         assert ms.send_sms("09171234567", " hi ") == "b1"
     args, kw = post.call_args
@@ -89,7 +89,7 @@ def test_success_request_shape():
 
 def test_device_id_sent(monkeypatch):
     monkeypatch.setenv("TEXTBEE_DEVICE_ID", "dev9")
-    with patch.object(ms.requests, "post", return_value=reply(200, {"data": {}})) as post:
+    with patch.object(requests, "post", return_value=reply(200, {"data": {}})) as post:
         ms.send_sms("09171234567", "hi")
     assert post.call_args[1]["json"]["deviceId"] == "dev9"
 
@@ -104,7 +104,7 @@ def test_device_id_sent(monkeypatch):
     (418, None, ms.MSG_SMS_UNEXPECTED),
 ])
 def test_errors(status, body, msg):
-    with patch.object(ms.requests, "post", return_value=reply(status, body)):
+    with patch.object(requests, "post", return_value=reply(status, body)):
         with pytest.raises(ms.SendError) as e:
             ms.send_sms("09171234567", "hi")
     assert str(e.value) == msg
@@ -113,19 +113,19 @@ def test_errors(status, body, msg):
 def test_network_errors():
     for exc, msg in ((requests.exceptions.Timeout, ms.MSG_SMS_TIMEOUT),
                      (requests.exceptions.ConnectionError, ms.MSG_SMS_NO_CONNECTION)):
-        with patch.object(ms.requests, "post", side_effect=exc):
+        with patch.object(requests, "post", side_effect=exc):
             with pytest.raises(ms.SendError, match=msg[:20]):
                 ms.send_sms("09171234567", "hi")
 
 
 def test_success_false_in_2xx():
-    with patch.object(ms.requests, "post", return_value=reply(200, {"data": {"success": False}})):
+    with patch.object(requests, "post", return_value=reply(200, {"data": {"success": False}})):
         with pytest.raises(ms.SendError):
             ms.send_sms("09171234567", "hi")
 
 
 def test_guards_before_network(monkeypatch):
-    with patch.object(ms.requests, "post") as post:
+    with patch.object(requests, "post") as post:
         with pytest.raises(ms.SendError): ms.send_sms("123", "hi")
         with pytest.raises(ms.SendError): ms.send_sms("09171234567", "  ")
         monkeypatch.delenv("TEXTBEE_API_KEY")

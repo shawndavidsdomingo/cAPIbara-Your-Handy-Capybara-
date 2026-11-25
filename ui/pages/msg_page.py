@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from services import message_service
 from core import session
 from services.auth_service import is_valid_email
-from ui.dialogs import MessageDialog, SentDialog
+from ui.dialogs import MessageDialog, SentDialog, SendingDialog
 from services.message_service import SendError
 from ui.workers import Task
 from ui.widgets import make_label
@@ -72,6 +72,8 @@ class DraftTab(QWidget):
         buttons.addWidget(self.send_button)
 
         left.addLayout(buttons)
+
+        self.sending_modal = None       # the pop-up shown while a send runs
 
         # Right: Drafts and Sent tabs
         right = QVBoxLayout()
@@ -342,6 +344,21 @@ class DraftTab(QWidget):
                        self.draft_list, self.send_button):
             widget.setEnabled(not busy)
         self.send_button.setText("Sending…" if busy else f"Send {self.kind}")
+        if busy:
+            self.sending_modal = SendingDialog(
+                f"Sending {self.kind}", self.sending_text, self.window())
+            self.sending_modal.start()
+        else:
+            self.close_sending_modal()
+
+    def close_sending_modal(self):
+        if self.sending_modal is not None:
+            self.sending_modal.finish()
+            self.sending_modal = None
+
+    def sending_text(self, seconds):
+        """What the pop-up says after `seconds` of sending (subclasses refine it)."""
+        return f"Sending your {self.kind}"
 
     def send(self):
         if self.task is not None:                # one send at a time
@@ -372,9 +389,11 @@ class DraftTab(QWidget):
         self.task.start()
 
     def on_sent(self, _result):
+        self.close_sending_modal()           # before the "sent" dialog opens
         self.finish_send(self.pending)
 
     def on_send_failed(self, message):
+        self.close_sending_modal()
         # Nothing is recorded and the form keeps its text so the user can retry
         QMessageBox.warning(self, f"{self.kind} not sent", message)
 
@@ -477,6 +496,13 @@ class SmsTab(DraftTab):
         return {"number": recipient, "text": body}
 
     # ---- Real sending through TextBee (message_service) ----
+
+    def sending_text(self, seconds):
+        if self.demo:
+            return "Sending (demo)"
+        if seconds < 3:
+            return "Sending to TextBee"
+        return "Waiting for your phone to send it"
 
     @property
     def demo(self):
