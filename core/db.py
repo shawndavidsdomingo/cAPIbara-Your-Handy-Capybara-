@@ -1,6 +1,6 @@
-"""SQLite connection helper and schema (guide section 2).
+"""SQLite connection helper and schema
 
-capibara.db is created next to the app (the project's top folder, or the .exe) on first launch by init_db().
+capibara.db is created next to the app (the project's top folder, or the .exe)
 Foreign keys are switched on for every connection.
 """
 import os

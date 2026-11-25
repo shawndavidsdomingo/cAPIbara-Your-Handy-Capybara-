@@ -1,4 +1,4 @@
-"""Forgot username or password (put this file in ui/).
+"""Forgot username or password.
 
 It works like Change password: the person proves they own the account's email
 with a one-time code, then sets a new password. Steps:
