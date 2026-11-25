@@ -1,4 +1,4 @@
-"""Zoom: how big the whole app is drawn, for people who find it hard to read. //para sa mga bulag
+"""Zoom: how big the whole app is drawn, for people who find it hard to read (low vision).
 
 The level is a percentage picked from LEVELS and is remembered between launches
 in settings.json, next to the app (the same place as capibara.db and .env). It
