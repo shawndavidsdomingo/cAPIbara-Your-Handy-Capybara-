@@ -7,6 +7,10 @@ with a one-time code, then sets a new password. Steps:
   2. verify_otp          - a code is sent to the account's email
   3. ResetPasswordDialog - shows the username and asks for a new password
 
+The flow never says whether an account exists: an unknown email or username
+gets the same "code sent" screen as a real one, but no code is sent and nothing
+can be verified.
+
 Call forgot_password(parent). It returns the username when the password was
 changed (so the Login form can fill it in), or None if the person gave up.
 
@@ -19,8 +23,12 @@ from ui.dialogs import error_line, make_dialog_layout, quiet, verify_otp
 from ui.widgets import make_button, make_input, make_label
 
 
+WHERE = "the email on the account"    # the same words for real and unknown accounts
+
+
 class FindAccountDialog(QDialog):
-    """Step 1: which account? Accepted when one was found (see .user)."""
+    """Step 1: which account? Accepted once something was typed. `.user` is the
+    account, or None if there is none (the person is not told)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,8 +36,8 @@ class FindAccountDialog(QDialog):
         self.user = None
         layout = make_dialog_layout(self, "Find your account")
 
-        info = quiet("Enter your email or username. We will send a code to the "
-                     "email on the account.")
+        info = quiet("Enter your email or username. If an account exists, we will "
+                     "send a code to its email.")
 
         self.login = make_input("Email or username")
         self.login.returnPressed.connect(self.submit)
@@ -49,11 +57,7 @@ class FindAccountDialog(QDialog):
         if not text:
             self.error.setText("Enter your email or username.")
             return
-        user = auth_service.find_user_by_login(text)
-        if user is None:
-            self.error.setText("No account found with that email or username.")
-            return
-        self.user = user
+        self.user = auth_service.find_user_by_login(text)   # may be None
         self.accept()
 
 
@@ -112,7 +116,11 @@ def forgot_password(parent):
         return None
     user = finder.user
 
-    if not verify_otp(parent, user["email"], "Confirm it's you"):
+    if user is None:                      # unknown account: same screens, no code
+        verify_otp(parent, "", "Confirm it's you", decoy=True, where=WHERE)
+        return None
+
+    if not verify_otp(parent, user["email"], "Confirm it's you", where=WHERE):
         return None                       # cancelled before the code was verified
 
     if ResetPasswordDialog(user, parent).exec() != QDialog.Accepted:
