@@ -1,21 +1,48 @@
 import csv
 import json
+import re
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QSpinBox,
     QCheckBox, QPushButton, QSizePolicy, QTableWidget,
     QTableWidgetItem, QHeaderView, QListWidget, QListWidgetItem,
-    QFileDialog, QMessageBox, QAbstractItemView)
+    QFileDialog, QMessageBox, QAbstractItemView, QDialog)
 
 from services import fake_service
 from core import session
 from core.zoom import px
 from services.fake_service import FakeDataError, FIELDS
+from ui.rename_dialog import RenameGenerationDialog
 from ui.widgets import SegmentedControl, make_card, make_label
 from ui.workers import Task
 
 PICKER_COLUMNS = 5      # checkboxes per row in the field picker
+
+
+def safe_filename(name):
+    """A batch name made safe for a file name (no \\ / : * ? " < > |)."""
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "_", name).strip(" .")
+    return cleaned or "generation"
+
+
+def sheet_title(name):
+    """Excel sheet names cannot have \\ / ? * [ ] : and stop at 31 characters."""
+    return re.sub(r"[\\/*?:\[\]]+", "_", name)[:31].strip() or "Data"
+
+
+class ElidedLabel(QLabel):
+    """A label that ends long text with an ellipsis instead of widening its row."""
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        self.full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.setText(self.fontMetrics().elidedText(
+            self.full_text, Qt.TextElideMode.ElideRight, self.width()))
 
 # what the user can export to: name -> (file extension, save-dialog filter)
 EXPORT_FORMATS = {
@@ -186,6 +213,7 @@ class FakeDataPage(QWidget):
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.history.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.history.currentRowChanged.connect(self.show_generation)
+        self.history.itemDoubleClicked.connect(self.rename_clicked_item)
         left.addWidget(self.history)
         return card
 
@@ -207,7 +235,8 @@ class FakeDataPage(QWidget):
         lay.setContentsMargins(10, 6, 6, 6)
         lay.setSpacing(6)
 
-        name = QLabel(gen["name"])
+        row.setToolTip(f"{gen['name']}\nDouble-click to rename")
+        name = ElidedLabel(gen["name"])
         name.setObjectName("bold")
         details = QLabel(f"{gen['time']}  ·  {gen['total']} records")
         details.setObjectName("muted")
@@ -227,7 +256,16 @@ class FakeDataPage(QWidget):
         trash.clicked.connect(
             lambda checked=False, g=gen: self.delete_generation(g))
 
+        edit = QPushButton("✏")
+        edit.setObjectName("edit")
+        edit.setToolTip("Rename this generation")
+        edit.setFixedSize(px(34), px(30))
+        edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit.clicked.connect(
+            lambda checked=False, g=gen: self.rename_generation(g))
+
         lay.addLayout(text, 1)
+        lay.addWidget(edit, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(trash, 0, Qt.AlignmentFlag.AlignVCenter)
 
         item = QListWidgetItem()
@@ -310,6 +348,18 @@ class FakeDataPage(QWidget):
         task = self.task
         if task is not None:
             task.wait()          # the batch is saved inside the task itself
+
+    # ---------- Rename ----------
+
+    def rename_clicked_item(self, item):
+        index = self.history.row(item)
+        if 0 <= index < len(self.generations):
+            self.rename_generation(self.generations[index])
+
+    def rename_generation(self, gen):
+        dialog = RenameGenerationDialog(self.user["id"], gen, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.load_history(select_id=gen["id"])      # keep the same batch selected
 
     # ---------- Delete / clear ----------
 
@@ -405,7 +455,8 @@ class FakeDataPage(QWidget):
         kind = self.export_format.currentText()
         extension, file_filter = EXPORT_FORMATS[kind]
         path, _ = QFileDialog.getSaveFileName(
-            self, f"Export to {kind}", f"{gen['name']}{extension}", file_filter)
+            self, f"Export to {kind}",
+            f"{safe_filename(gen['name'])}{extension}", file_filter)
         if not path:
             return
         if not path.lower().endswith(extension):
@@ -438,7 +489,7 @@ class FakeDataPage(QWidget):
             return False
         wb = Workbook()
         ws = wb.active
-        ws.title = title
+        ws.title = sheet_title(title)
         ws.append(labels)
         for row in table_rows:
             ws.append(row)

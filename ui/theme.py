@@ -154,6 +154,16 @@ QPushButton#trash {
 }
 QPushButton#trash:hover { background: transparent; color: $error; }
 
+QPushButton#edit {
+    background: transparent;
+    color: $muted;
+    border: none;
+    padding: 2px 6px;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji";
+    font-size: 16px;
+}
+QPushButton#edit:hover { background: transparent; color: $primary; }
+
 /* ---------- Check boxes and group boxes ---------- */
 QCheckBox { spacing: 8px; }
 QCheckBox::indicator {

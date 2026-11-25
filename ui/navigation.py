@@ -95,12 +95,16 @@ class _Crossfade(QLabel):
 
 
 def _carry_text(old, new):
-    """Keep what was typed in the Login or Register form."""
-    from PySide6.QtWidgets import QLineEdit
+    """Keep what was typed (and ticked) in the Login or Register form."""
+    from PySide6.QtWidgets import QCheckBox, QLineEdit
     before, after = old.findChildren(QLineEdit), new.findChildren(QLineEdit)
     if len(before) == len(after):
         for source, target in zip(before, after):
             target.setText(source.text())
+    before, after = old.findChildren(QCheckBox), new.findChildren(QCheckBox)
+    if len(before) == len(after):
+        for source, target in zip(before, after):
+            target.setChecked(source.isChecked())
 
 
 def _place_like(old, new):

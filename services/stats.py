@@ -35,10 +35,11 @@ def count_generations(user_id):
 
 
 def generation_names(user_id):
-    """["Gen 1", "Gen 2", ...] for the dashboard."""
-    sql = "SELECT number FROM fake_generations WHERE user_id = ? ORDER BY id"
+    """The batch names for the dashboard: the user's own, or "Gen 1", "Gen 2", ..."""
+    sql = "SELECT number, name FROM fake_generations WHERE user_id = ? ORDER BY id"
     with connection() as conn:
-        return [f"Gen {row[0]}" for row in conn.execute(sql, (user_id,)).fetchall()]
+        return [row[1] or f"Gen {row[0]}"
+                for row in conn.execute(sql, (user_id,)).fetchall()]
 
 
 def activity_by_day(user_id, days=7):
