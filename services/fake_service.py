@@ -1,4 +1,4 @@
-"""Fake person data from the FakerAPI (https://fakerapi.it), plus storage.
+"""Fake person data from the FakerAPI (https://fakerapi.it)
 
 ALL FakerAPI-specific code lives in FIELDS and fetch_persons(), so the rest of
 the app never changes if the API does. The page only sees rows (dicts) or a
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 ENDPOINT = "https://fakerapi.it/api/v1/persons"
 TIMEOUT = 20
-MIN_RECORDS = 10           # project rule: at least 10 records
+MIN_RECORDS = 10           # at least 10 records
 MAX_RECORDS = 1000         # FakerAPI's own limit per request
 GENDERS = {"Any": None, "Male": "male", "Female": "female"}
 

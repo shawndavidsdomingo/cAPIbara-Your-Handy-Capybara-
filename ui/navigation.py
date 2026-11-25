@@ -9,7 +9,7 @@ import this module, so importing them at the top would be a circular import.
 set_zoom() also lives here: a new zoom needs every window redrawn at the new
 size, so it builds a fresh copy of the window on screen. To make that swap
 smooth, the new window opens centred where the old one was, and a picture of
-the old window fades away over it (see _Crossfade).
+the old window fades away over it (_Crossfade).
 """
 
 from PySide6.QtCore import QEvent, QPropertyAnimation, Qt
@@ -19,7 +19,6 @@ from core import session
 
 _current = None    # the window on screen now
 _previous = None   # the window closed one step ago. It is kept alive on purpose:
-                   # Python deletes a window nobody refers to, and we must not
                    # delete a window while one of its own buttons is still running.
 _kind = None       # what the window on screen is: "login", "register" or "main"
 

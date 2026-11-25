@@ -1,4 +1,4 @@
-"""URL shortening through the Ulvis API, plus link storage (guide section 5).
+"""URL shortening through the Ulvis API, plus link storage.
 
 ALL Ulvis-specific code lives in ulvis_shorten() and the helpers right under
 it, so the rest of the app never changes if the API does.
@@ -201,7 +201,7 @@ def shorten(long_url):
     return isgd_shorten(long_url)
 
 
-# ---------- Storage (every query is scoped to the user) ----------
+# ---------- Storage ----------
 
 def find_link(user_id, original_url):
     """The user's saved link for this exact URL (newest if there are several)."""
