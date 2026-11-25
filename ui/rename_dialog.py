@@ -1,4 +1,4 @@
-"""Pop-up for renaming a Fake Data generation.
+"""Pop-up for renaming a Fake Data generation (put this file in ui/).
 
 Reuses the helpers in dialogs.py so it looks like the other dialogs. An empty
 name puts the default ("Gen 3") back. The service checks the name and saves it.

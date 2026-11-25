@@ -1,4 +1,4 @@
-"""Zoom: how big the whole app is drawn, for people who find it hard to read. //para sa mga bulag
+"""Zoom: how big the whole app is drawn, for people who find it hard to read.
 
 The level is a percentage picked from LEVELS and is remembered between launches
 in settings.json, next to the app (the same place as capibara.db and .env). It
@@ -26,7 +26,7 @@ def _load():
     try:
         with open(SETTINGS_PATH, encoding="utf-8") as file:
             value = json.load(file).get("zoom", DEFAULT)
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError):    # no file, or not readable: default
         return
     _level = value if value in LEVELS else DEFAULT
 
@@ -35,17 +35,17 @@ def _save():
     try:
         with open(SETTINGS_PATH, "w", encoding="utf-8") as file:
             json.dump({"zoom": _level}, file)
-    except OSError:
+    except OSError:                                  # a read-only folder: just not remembered
         pass
 
 
 def level():
-    """zoom percentage"""
+    """The zoom as a percentage, e.g. 125."""
     return _level
 
 
 def factor():
-    """zoom multiplier"""
+    """The zoom as a multiplier, e.g. 1.25."""
     return _level / 100
 
 
@@ -55,7 +55,7 @@ def px(size):
 
 
 def step(direction):
-    """level up (+1) or down (-1), or None at the end of the range."""
+    """The next level up (+1) or down (-1), or None at the end of the range."""
     index = LEVELS.index(_level) + direction
     return LEVELS[index] if 0 <= index < len(LEVELS) else None
 

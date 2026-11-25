@@ -8,7 +8,7 @@ from ui.theme import STYLESHEET
 from ui.widgets import ICON_PATH
 
 if __name__ == "__main__":
-    init_db()                                   # creates capibara.db on first launch
+    init_db()                        # creates capibara.db on first launch
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setWindowIcon(QIcon(ICON_PATH))      # every window and the taskbar use the logo

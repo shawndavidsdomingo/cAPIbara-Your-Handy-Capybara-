@@ -15,7 +15,7 @@ COLUMNS = (("name", "Name"), ("mobile", "Mobile"), ("email", "Email"))
 
 
 class ContactsPage(QWidget):
-    """CONTACTS. Add, edit and delete people here; the SMS and
+    """The user's address book. Add, edit and delete people here; the SMS and
     Email tabs pick from this list. Saved through contact_service."""
 
     def __init__(self):
