@@ -6,10 +6,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QLabel, QLineEdit, QPushButton, QApplication,
                                QScrollArea, QSizePolicy, QMessageBox)
 
-import session
-import url_service
-from url_service import ShortenError
-from widgets import make_label, make_error_label
+from core import session
+from services import url_service
+from services.url_service import ShortenError
+from ui.widgets import make_label, make_error_label
 
 
 class ElidedLabel(QLabel):
@@ -84,7 +84,7 @@ class ShortenWorker(QObject):
 
     def run(self):
         try:
-            self.done.emit(url_service.ulvis_shorten(self.url))
+            self.done.emit(url_service.shorten(self.url))
         except ShortenError as error:
             self.failed.emit(str(error))
         except Exception:                           # never leave the button stuck
@@ -176,7 +176,7 @@ class UrlPage(QWidget):
         then handle its result so the new link is saved before the app exits."""
         if self.thread is not None:
             self.thread.quit()
-            self.thread.wait(url_service.TIMEOUT * 1000 + 2000)
+            self.thread.wait(url_service.TIMEOUT * 2000 + 2000)   # Ulvis, then is.gd
             QApplication.processEvents()
 
     # ---------- History ----------

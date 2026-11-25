@@ -1,9 +1,9 @@
 import pytest
 
-import auth_service as auth
-import db
-import navigation
-import session
+from services import auth_service as auth
+from core import db
+from ui import navigation
+from core import session
 
 
 @pytest.fixture(autouse=True)

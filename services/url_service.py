@@ -7,6 +7,11 @@ Confirmed (Ulvis GitHub README): GET https://ulvis.net/API/write/get takes the
 request parameters url, custom, type, private, password, uses, expire and via.
 No API key. We only send `url`.
 
+Ulvis sits behind Cloudflare, which sometimes answers scripts with a "Just a
+moment..." check page (HTTP 403) for some links. shorten() then falls back to is.gd
+(https://is.gd/create.php?format=json&url=..., no key). Everything is.gd-specific
+lives in isgd_shorten().
+
 The reply format is read tolerantly (JSON, plain text or XML): we look for a
 ulvis.net short link in the raw reply. If nothing usable is found, the raw
 reply is logged as a warning (see the Run console) so it can be checked.
@@ -18,12 +23,13 @@ from urllib.parse import urlparse
 
 import requests
 
-from db import connection
+from core.db import connection
 
 log = logging.getLogger(__name__)
 
 ULVIS_ENDPOINT = "https://ulvis.net/API/write/get"
 ULVIS_HOST = "https://ulvis.net"
+ISGD_ENDPOINT = "https://is.gd/create.php"
 EXTRA_PARAMS = {}          # e.g. {"type": "json"} if the API ever needs it
 TIMEOUT = 10
 
@@ -32,6 +38,9 @@ MSG_NO_CONNECTION = "Could not reach the shortener. Check your connection."
 MSG_TIMEOUT = "The shortener took too long. Try again."
 MSG_RATE_LIMIT = "Too many requests. Please wait a moment and try again."
 MSG_UNEXPECTED = "The shortener sent an unexpected reply."
+MSG_BLOCKED = "The shortener blocked this request. Try again later or use another link."
+MSG_SERVER = "The shortener is having problems. Try again later."
+MSG_LINK_REFUSED = "The shortener does not accept this link. Try another link."
 
 # UTC "now" with milliseconds, so links sort exactly by when they were last used
 NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
@@ -41,6 +50,10 @@ SHORT_LINK = re.compile(
     r"https?://(?:www\.)?ulvis\.net/"
     r"(?!(?:API|api|developer|multishrink|contact|disclaimer|privacy|browser)\b)"
     r"[A-Za-z0-9_-]+")
+
+
+# A short link on is.gd
+ISGD_SHORT = re.compile(r"https?://(?:www\.)?is\.gd/[A-Za-z0-9_-]+")
 
 
 class ShortenError(Exception):
@@ -65,7 +78,10 @@ def ulvis_shorten(long_url):
         reply = requests.get(ULVIS_ENDPOINT, params=params, timeout=TIMEOUT)
         if reply.status_code == 429:
             raise ShortenError(MSG_RATE_LIMIT)
-        reply.raise_for_status()
+        if reply.status_code >= 500:
+            raise ShortenError(MSG_SERVER)
+        if reply.status_code >= 400:          # e.g. 403: blocked by Cloudflare
+            raise ShortenError(MSG_BLOCKED)
         text = reply.text
     except ShortenError:
         raise
@@ -132,6 +148,57 @@ def _read_reply(text, long_url):
 
     log.warning("Unexpected Ulvis reply: %.500s", text)
     raise ShortenError(MSG_UNEXPECTED)
+
+
+# ---------- is.gd provider (fallback) ----------
+
+def _isgd_error(payload):
+    code = payload.get("errorcode")
+    text = str(payload.get("errormessage") or "").lower()
+    if any(word in text for word in ("rate", "limit", "too many")):
+        return MSG_RATE_LIMIT
+    if code == 4:
+        return MSG_SERVER
+    return MSG_LINK_REFUSED
+
+
+def isgd_shorten(long_url):
+    """Return the short URL string from is.gd, or raise ShortenError."""
+    try:
+        reply = requests.get(ISGD_ENDPOINT, params={"format": "json", "url": long_url},
+                             timeout=TIMEOUT)
+    except requests.exceptions.Timeout:
+        raise ShortenError(MSG_TIMEOUT)
+    except requests.exceptions.RequestException:
+        raise ShortenError(MSG_NO_CONNECTION)
+
+    try:                                   # is.gd answers errors in JSON too
+        payload = json.loads(reply.text)
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        short = payload.get("shorturl")
+        if isinstance(short, str) and ISGD_SHORT.fullmatch(short):
+            return short
+        if payload.get("errorcode") is not None:
+            raise ShortenError(_isgd_error(payload))
+    if reply.status_code == 429:
+        raise ShortenError(MSG_RATE_LIMIT)
+    if reply.status_code >= 500:
+        raise ShortenError(MSG_SERVER)
+    log.warning("Unexpected is.gd reply: %.500s", reply.text)
+    raise ShortenError(MSG_UNEXPECTED)
+
+
+def shorten(long_url):
+    """Ulvis first; if it fails for any reason except a bad link, try is.gd."""
+    try:
+        return ulvis_shorten(long_url)
+    except ShortenError as first:
+        if str(first) == MSG_INVALID_URL:
+            raise
+        log.warning("Ulvis failed (%s); trying is.gd", first)
+    return isgd_shorten(long_url)
 
 
 # ---------- Storage (every query is scoped to the user) ----------

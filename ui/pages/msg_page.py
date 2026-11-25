@@ -8,13 +8,13 @@ from PySide6.QtWidgets import (
     QListWidget, QMessageBox, QApplication
 )
 
-import message_service
-import session
-from auth_service import is_valid_email
-from dialogs import MessageDialog, SentDialog
-from message_service import SendError
-from workers import Task
-from widgets import make_label
+from services import message_service
+from core import session
+from services.auth_service import is_valid_email
+from ui.dialogs import MessageDialog, SentDialog, SendingDialog
+from services.message_service import SendError
+from ui.workers import Task
+from ui.widgets import make_label
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,11 @@ def local_stamp(stamp):
         return utc.astimezone().strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
         return stamp or ""
+
+
+def keep_format(text):
+    """Trim blank lines around a message but keep the typed indents and spacing."""
+    return text.strip("\r\n") if text.strip() else ""
 
 
 def now_stamp():
@@ -67,6 +72,8 @@ class DraftTab(QWidget):
         buttons.addWidget(self.send_button)
 
         left.addLayout(buttons)
+
+        self.sending_modal = None       # the pop-up shown while a send runs
 
         # Right: Drafts and Sent tabs
         right = QVBoxLayout()
@@ -329,7 +336,7 @@ class DraftTab(QWidget):
         """Called by MainWindow on close: let a running send finish first,
         then handle its result so the message is recorded before the app exits."""
         if self.task is not None:
-            self.task.wait(message_service.TIMEOUT * 1000 + 2000)
+            self.task.wait(message_service.MAX_SEND_SECONDS * 1000 + 2000)
             QApplication.processEvents()
 
     def set_sending(self, busy):
@@ -337,6 +344,21 @@ class DraftTab(QWidget):
                        self.draft_list, self.send_button):
             widget.setEnabled(not busy)
         self.send_button.setText("Sending…" if busy else f"Send {self.kind}")
+        if busy:
+            self.sending_modal = SendingDialog(
+                f"Sending {self.kind}", self.sending_text, self.window())
+            self.sending_modal.start()
+        else:
+            self.close_sending_modal()
+
+    def close_sending_modal(self):
+        if self.sending_modal is not None:
+            self.sending_modal.finish()
+            self.sending_modal = None
+
+    def sending_text(self, seconds):
+        """What the pop-up says after `seconds` of sending (subclasses refine it)."""
+        return f"Sending your {self.kind}"
 
     def send(self):
         if self.task is not None:                # one send at a time
@@ -367,9 +389,11 @@ class DraftTab(QWidget):
         self.task.start()
 
     def on_sent(self, _result):
+        self.close_sending_modal()           # before the "sent" dialog opens
         self.finish_send(self.pending)
 
     def on_send_failed(self, message):
+        self.close_sending_modal()
         # Nothing is recorded and the form keeps its text so the user can retry
         QMessageBox.warning(self, f"{self.kind} not sent", message)
 
@@ -471,6 +495,35 @@ class SmsTab(DraftTab):
     def from_fields(self, recipient, subject, body):
         return {"number": recipient, "text": body}
 
+    # ---- Real sending through TextBee (message_service) ----
+
+    def sending_text(self, seconds):
+        if self.demo:
+            return "Sending (demo)"
+        if seconds < 3:
+            return "Sending to TextBee"
+        return "Waiting for your phone to send it"
+
+    @property
+    def demo(self):
+        """No TEXTBEE_API_KEY in .env: nothing really leaves the app."""
+        return not message_service.sms_enabled()
+
+    def problem_with(self, d):
+        if not d["number"]:
+            return "Enter a recipient mobile number."
+        if not message_service.is_valid_ph_mobile(d["number"]):
+            return message_service.MSG_BAD_NUMBER
+        if not d["text"]:
+            return "Write a message."
+        return None
+
+    def deliver(self, d):
+        if self.demo:
+            self.finish_send(d)
+            return
+        self.start_task(d, message_service.send_sms, d["number"], d["text"])
+
 
 class EmailTab(DraftTab):
     kind = "Email"
@@ -505,7 +558,7 @@ class EmailTab(DraftTab):
         return {
             "to": self.to.text().strip(),
             "subject": self.subject.text().strip(),
-            "body": self.body.toPlainText().strip()
+            "body": keep_format(self.body.toPlainText())
         }
 
     def set_data(self, d):
