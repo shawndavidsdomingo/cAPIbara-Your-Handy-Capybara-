@@ -59,16 +59,21 @@ class OTPDialog(QDialog):
 
     RESEND_SECONDS = 30
 
-    def __init__(self, email, title, parent=None):
+    def __init__(self, email, title, parent=None, decoy=False, where=None):
+        """decoy=True looks exactly like a real code request but sends nothing and
+        can never be verified (used when the account does not exist, so the
+        Forgot password flow does not reveal which accounts are registered).
+        `where` replaces the masked email in the text."""
         super().__init__(parent)
         self.setWindowTitle("Verification")
         self.email = email
+        self.decoy = decoy
         self.code = None
         self.task = None           # the background email send, if any
         self.closed = False        # set when the dialog ends; late replies are ignored
         layout = make_dialog_layout(self, title)
 
-        info = make_label(f"We sent a 6-digit code to\n{mask_email(email)}")
+        info = make_label(f"We sent a 6-digit code to\n{where or mask_email(email)}")
         info.setWordWrap(True)
         self.demo_hint = quiet("", center=True)          # shows the fake code
 
@@ -118,6 +123,14 @@ class OTPDialog(QDialog):
 
         if not message_service.email_enabled():       # demo mode: show the code
             self.demo_hint.setText(f"Demo only: your code is {self.code}")
+            if self.decoy:
+                self.code = "decoy"       # the digits-only box can never match it
+            self.start_countdown()
+            return
+
+        if self.decoy:                    # nothing is sent, but it looks the same
+            self.code = "decoy"
+            self.demo_hint.setText("Check your inbox (and the spam folder).")
             self.start_countdown()
             return
 
@@ -184,9 +197,9 @@ class OTPDialog(QDialog):
         super().done(result)
 
 
-def verify_otp(parent, email, title):
+def verify_otp(parent, email, title, decoy=False, where=None):
     """Shortcut: show the OTP dialog, return True if verified."""
-    return OTPDialog(email, title, parent).exec() == QDialog.Accepted
+    return OTPDialog(email, title, parent, decoy, where).exec() == QDialog.Accepted
 
 
 class NewEmailDialog(QDialog):

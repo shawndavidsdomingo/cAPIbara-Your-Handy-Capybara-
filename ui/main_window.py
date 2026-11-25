@@ -59,9 +59,9 @@ class MainWindow(QMainWindow):
         side.addWidget(self.menu, 1)
 
         side.addSpacing(8)
-        who = make_label(session.current()["full_name"], "bold")
-        who.setWordWrap(True)
-        side.addWidget(who)
+        self.who = make_label(session.current()["full_name"], "bold")
+        self.who.setWordWrap(True)
+        side.addWidget(self.who)
         side.addWidget(make_label(f"@{username}", "muted"))
         side.addSpacing(8)
         self.fullscreen_button = make_button("Full screen", self.toggle_fullscreen,
@@ -107,6 +107,8 @@ class MainWindow(QMainWindow):
         return not hasattr(page, "confirm_leave") or page.confirm_leave()
 
     def change_page(self, index):
+        # the Profile page can rename the user: keep the sidebar name current
+        self.who.setText(session.current()["full_name"])
         if not self.can_leave_page():
             # user cancelled: put the sidebar selection back
             self.menu.blockSignals(True)
