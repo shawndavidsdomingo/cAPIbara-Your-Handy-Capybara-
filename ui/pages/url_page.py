@@ -7,9 +7,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QScrollArea, QSizePolicy, QMessageBox)
 
 from core import session
+from core.zoom import px
 from services import url_service
 from services.url_service import ShortenError
-from ui.widgets import make_label, make_error_label
+from ui.widgets import make_button, make_card, make_label, make_error_label
 
 
 class ElidedLabel(QLabel):
@@ -17,8 +18,10 @@ class ElidedLabel(QLabel):
     Click it to copy the full text: `clicked` sends that text."""
     clicked = Signal(str)
 
-    def __init__(self, text):
+    def __init__(self, text, name=None):
         super().__init__()
+        if name:
+            self.setObjectName(name)                # a style from theme.py, e.g. "link"
         self.full_text = text
         self.setToolTip(f"{text}\nClick to copy")   # hover shows the full text
         self.setCursor(Qt.PointingHandCursor)
@@ -62,7 +65,7 @@ class SortHeader(QLabel):
     def __init__(self, text, column, tip):
         super().__init__(text)
         self.column = column
-        self.setObjectName("bold")
+        self.setObjectName("fieldLabel")
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(tip)
 
@@ -118,48 +121,70 @@ class UrlPage(QWidget):
         self.sort_state = 0         # 0 = default, 1 = A to Z / earliest, 2 = Z to A / latest
 
         layout = QVBoxLayout(self)
-        layout.addWidget(make_label("URL Shortening", "heading"))
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(make_label("URL Shortening", "title"))
+        layout.addWidget(make_label("Turn a long link into a short one and keep track of it.",
+                                    "muted"))
+        layout.addSpacing(10)
 
-        # Input row: long URL + Shorten button (Enter key works too)
+        # The shortener: long URL in, short URL out
+        form = make_card()
+        form_layout = QVBoxLayout(form)
+        form_layout.setContentsMargins(20, 18, 20, 16)
+        form_layout.setSpacing(6)
+
         self.long_url = QLineEdit()
         self.long_url.setPlaceholderText("Paste your long URL here (http:// or https://)")
         self.long_url.returnPressed.connect(self.shorten)
         self.shorten_button = QPushButton("Shorten")
-        self.shorten_button.setMinimumWidth(110)
+        self.shorten_button.setMinimumWidth(px(110))
         self.shorten_button.clicked.connect(self.shorten)
         input_row = QHBoxLayout()
         input_row.addWidget(self.long_url, 1)
         input_row.addWidget(self.shorten_button)
-        layout.addLayout(input_row)
 
-        # Output + Copy button
         self.short_url = QLineEdit()
         self.short_url.setReadOnly(True)
         self.short_url.setPlaceholderText("Short URL appears here")
-        copy = QPushButton("Copy")
-        copy.setMinimumWidth(85)
-        copy.clicked.connect(lambda: self.copy_url(self.short_url.text()))
+        copy = make_button("Copy", lambda: self.copy_url(self.short_url.text()),
+                           secondary=True)
+        copy.setMinimumWidth(px(110))
         out_row = QHBoxLayout()
         out_row.addWidget(self.short_url, 1)
         out_row.addWidget(copy)
-        layout.addLayout(out_row)
 
         self.error = make_error_label()
-        self.note = make_label("", "success", center=True)
-        layout.addWidget(self.error)
-        layout.addWidget(self.note)
+        self.error.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.note = make_label("", "success")
 
+        form_layout.addWidget(make_label("Long URL", "fieldLabel"))
+        form_layout.addLayout(input_row)
+        form_layout.addSpacing(6)
+        form_layout.addWidget(make_label("Short URL", "fieldLabel"))
+        form_layout.addLayout(out_row)
+        form_layout.addWidget(self.error)
+        form_layout.addWidget(self.note)
+        layout.addWidget(form)
+        layout.addSpacing(10)
+
+        # History: title and search on one row, the links in a card below
         history_row = QHBoxLayout()
-        history_row.addWidget(QLabel("History"))
+        history_row.addWidget(make_label("History", "heading"))
         history_row.addStretch()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search short or original link")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(300)
+        self.search.setFixedWidth(px(300))
         self.search.textChanged.connect(self.render_history)
         history_row.addWidget(self.search)
         layout.addLayout(history_row)
-        layout.addWidget(self.build_history(), 1)
+
+        history_card = make_card()
+        history_layout = QVBoxLayout(history_card)
+        history_layout.setContentsMargins(4, 4, 4, 4)
+        history_layout.addWidget(self.build_history())
+        layout.addWidget(history_card, 1)
 
     # ---------- Page contract ----------
 
@@ -188,7 +213,7 @@ class UrlPage(QWidget):
 
         holder = QWidget()
         self.grid = QGridLayout(holder)
-        self.grid.setContentsMargins(8, 8, 8, 8)
+        self.grid.setContentsMargins(16, 12, 16, 12)
         self.grid.setHorizontalSpacing(15)
         self.grid.setVerticalSpacing(10)
         self.grid.setAlignment(Qt.AlignTop)         # rows stay at the top
@@ -264,13 +289,13 @@ class UrlPage(QWidget):
                 header = SortHeader(text + arrow, col, self.SORT_TIPS[col])
                 header.clicked.connect(self.sort_by_column)
             else:
-                header = make_label(text, "bold")
+                header = make_label(text, "fieldLabel")
             self.grid.addWidget(header, 0, col, Qt.AlignVCenter)
         for row, link in enumerate(rows, start=1):
             self.add_row(row, link)
 
     def add_row(self, row, link):
-        short = ElidedLabel(link["short_url"])
+        short = ElidedLabel(link["short_url"], "link")
         short.clicked.connect(lambda text: self.copy_url(text, "Short link copied."))
         original = ElidedLabel(link["original_url"])
         original.clicked.connect(lambda text: self.copy_url(text, "Original link copied."))
@@ -285,21 +310,21 @@ class UrlPage(QWidget):
         box.setSpacing(6)
 
         open_btn = QPushButton("Open")
-        open_btn.setStyleSheet("padding: 2px 6px;")      # room for the label
-        open_btn.setFixedSize(64, 30)
+        open_btn.setStyleSheet(f"padding: {px(2)}px {px(6)}px;")      # room for the label
+        open_btn.setFixedSize(px(64), px(30))
         open_btn.clicked.connect(lambda checked=False, l=link: self.open_link(l))
 
         copy_btn = QPushButton("Copy")
         copy_btn.setObjectName("secondary")
-        copy_btn.setStyleSheet("padding: 2px 6px;")
-        copy_btn.setFixedSize(64, 30)
+        copy_btn.setStyleSheet(f"padding: {px(2)}px {px(6)}px;")
+        copy_btn.setFixedSize(px(64), px(30))
         copy_btn.clicked.connect(
             lambda checked=False, l=link: self.copy_url(l["short_url"]))
 
         trash = QPushButton("🗑")                         # same style as Fake Data
         trash.setObjectName("trash")
         trash.setToolTip("Delete this link")
-        trash.setFixedSize(34, 30)
+        trash.setFixedSize(px(34), px(30))
         trash.clicked.connect(lambda checked=False, l=link: self.delete_link(l))
 
         for button in (open_btn, copy_btn, trash):
