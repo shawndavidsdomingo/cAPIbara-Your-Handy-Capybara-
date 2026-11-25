@@ -1,7 +1,9 @@
-"""Register, login and profile updates (guide sections 3 and 4).
+"""Register, login and profile updates.
 
-The GUI calls these functions and never touches SQL. Passwords are stored
-only as a random salt + PBKDF2-SHA256 hash. Every statement uses ? placeholders.
+The GUI calls these functions and never touches SQL.
+Passwords are stored
+only as a random salt + PBKDF2-SHA256 hash.
+Every statement uses ? placeholders.
 Functions raise ValueError with a message that is safe to show to the user.
 """
 import hashlib
@@ -17,7 +19,7 @@ MIN_PASSWORD = 8
 PUBLIC_COLUMNS = "id, username, full_name, email"   # never select salt/hash for the GUI
 
 
-# ---------- Validators (moved from demo_store.py) ----------
+# ---------- Validators  ----------
 
 def is_valid_email(email):
     return re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
@@ -111,7 +113,7 @@ def register_user(username, full_name, email, password):
                 "VALUES (?, ?, ?, ?, ?)",
                 (username, full_name, email, salt, pw_hash))
             return cursor.lastrowid
-    except sqlite3.IntegrityError:            # lost a race with another insert
+    except sqlite3.IntegrityError:
         raise ValueError("That username or email is already taken.")
 
 
@@ -126,7 +128,7 @@ def verify_login(login, password):
             "WHERE username = ? OR email = ?",
             (login, login)).fetchone()
     if row is None:
-        hash_password(password)               # similar timing for unknown users
+        hash_password(password)
         return None
     if not verify_password(password, row["salt"], row["password_hash"]):
         return None
