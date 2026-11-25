@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from core import session
 from services.auth_service import update_email, update_name
 from ui.dialogs import NewEmailDialog, NewPasswordDialog, verify_otp
+from core.zoom import px
 from ui.theme import COLORS
 from ui.widgets import make_button, make_card, make_label
 
@@ -29,7 +30,7 @@ class ProfilePage(QWidget):
         outer.addSpacing(10)
 
         card = make_card()
-        card.setFixedWidth(540)
+        card.setFixedWidth(px(540))
         layout = QVBoxLayout(card)
         layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(6)
@@ -79,7 +80,7 @@ class ProfilePage(QWidget):
         # --- Status message ---
         self.status = QLabel("")
         self.status.setWordWrap(True)
-        self.status.setMinimumHeight(20)         # the card does not jump when it shows
+        self.status.setMinimumHeight(px(20))         # the card does not jump when it shows
         layout.addSpacing(8)
         layout.addWidget(self.status)
 

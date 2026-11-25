@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QListWidget, QMessageBox, QApplication, QDialog
 )
 
+from core.zoom import px
 from services import message_service
 from core import session
 from services.auth_service import is_valid_email
@@ -86,7 +87,7 @@ class DraftTab(QWidget):
 
         # Right: Drafts and Sent tabs in a card
         right = make_card()
-        right.setFixedWidth(330)
+        right.setFixedWidth(px(330))
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(8, 8, 8, 8)
 

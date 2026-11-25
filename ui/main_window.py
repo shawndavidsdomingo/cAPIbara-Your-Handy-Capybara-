@@ -12,13 +12,14 @@ from ui.pages.msg_page import MessagePage
 from ui.pages.contacts_page import ContactsPage
 from ui.pages.fake_page import FakeDataPage
 from ui.pages.profile_page import ProfilePage
-from ui.widgets import make_button, make_label, make_logo
+from core.zoom import px
+from ui.widgets import enable_zoom, make_button, make_label, make_logo
 
 
 class MainWindow(QMainWindow):
     MAX_CONTENT_WIDTH = 1500
 
-    def __init__(self):
+    def __init__(self, start_page=0):
         super().__init__()
         self.logging_out = False   # logout closes this window without asking
         self.was_maximized = False # what to go back to when leaving full screen
@@ -35,7 +36,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
         sidebar.setAttribute(Qt.WA_StyledBackground, True)
-        sidebar.setFixedWidth(230)
+        sidebar.setFixedWidth(px(230))
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(16, 20, 16, 16)
         side.setSpacing(4)
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         # F11 switches full screen on and off; Esc leaves it
         QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
         QShortcut(QKeySequence("Esc"), self, activated=self.leave_fullscreen)
+        enable_zoom(self)                   # Ctrl + mouse wheel (and Ctrl and +, -, 0)
 
         # Pages (same order as the menu items)
         self.pages = QStackedWidget()
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(ProfilePage())
 
         self.menu.currentRowChanged.connect(self.change_page)
-        self.menu.setCurrentRow(0)          # also sizes the window (see change_page)
+        self.menu.setCurrentRow(start_page)  # also sizes the window (see change_page)
 
         # The pages sit in a padded area to the right of the sidebar
         # On a big screen the pages stop growing at MAX_CONTENT_WIDTH and stay
@@ -91,7 +93,7 @@ class MainWindow(QMainWindow):
         content = QWidget()
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(28, 24, 28, 24)
-        self.pages.setMaximumWidth(self.MAX_CONTENT_WIDTH)
+        self.pages.setMaximumWidth(px(self.MAX_CONTENT_WIDTH))
         content_layout.addStretch(1)
         content_layout.addWidget(self.pages, 1000)
         content_layout.addStretch(1)
@@ -123,6 +125,7 @@ class MainWindow(QMainWindow):
         if self.isFullScreen() or self.isMaximized():
             return                  # the user chose the size: leave it alone
         width, height = (1440, 700) if getattr(page, "wide", False) else (1000, 660)
+        width, height = px(width), px(height)
         screen = self.screen().availableGeometry()
         self.resize(min(width, screen.width()), min(height, screen.height()))
 
@@ -154,6 +157,16 @@ class MainWindow(QMainWindow):
         # button on a Mac), so keep the label right in that case too
         if event.type() == QEvent.WindowStateChange and hasattr(self, "fullscreen_button"):
             self.sync_fullscreen_button()
+
+    def adopt_state(self, old):
+        """Open in the same state (full screen or maximized) as the window this
+        one replaces. Used when the zoom changes. Call it before show()."""
+        if old.isFullScreen():
+            self.was_maximized = old.was_maximized
+            self.setWindowState(self.windowState() | Qt.WindowFullScreen)
+        elif old.isMaximized():
+            self.setWindowState(self.windowState() | Qt.WindowMaximized)
+        self.sync_fullscreen_button()
 
     # ---------- Closing the app ----------
 

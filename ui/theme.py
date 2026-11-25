@@ -4,7 +4,10 @@ Change a colour once in COLORS and every screen follows. Code that needs a
 colour outside the stylesheet (a spinner, a status message) imports COLORS from
 here instead of typing its own hex value.
 """
+import re
 from string import Template
+
+from core import zoom
 
 COLORS = {
     "bg": "#F7F3EE",              # window background (warm off-white)
@@ -258,4 +261,18 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QMessageBox QPushButton { min-width: 72px; }
 """)
 
-STYLESHEET = _TEMPLATE.substitute(COLORS)
+def scale_px(css, factor):
+    """Multiply every 'Npx' in a stylesheet by the zoom. 1px lines stay thin."""
+    def one(match):
+        size = int(match.group(1))
+        return f"{size if size <= 1 else round(size * factor)}px"
+    return re.sub(r"(\d+)px", one, css)
+
+
+def build_stylesheet(factor=None):
+    """The whole stylesheet at a zoom (the current one if none is given)."""
+    factor = zoom.factor() if factor is None else factor
+    return scale_px(_TEMPLATE.substitute(COLORS), factor)
+
+
+STYLESHEET = build_stylesheet()

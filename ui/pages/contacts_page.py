@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core import session
+from core.zoom import px
 from services import contact_service
 from ui.dialogs import ContactDialog
 from ui.theme import COLORS
@@ -49,11 +50,11 @@ class ContactsPage(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Stretch)
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)   # headers line up with the cells
-        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setDefaultSectionSize(px(40))
         # the same side padding on headers (12px) and cells (9px + Qt's own 3px margin)
         self.table.setStyleSheet(
-            "QTableWidget::item { padding: 0px 9px; }"
-            "QHeaderView::section { padding: 8px 12px; }")
+            f"QTableWidget::item {{ padding: 0px {px(9)}px; }}"
+            f"QHeaderView::section {{ padding: {px(8)}px {px(12)}px; }}")
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)

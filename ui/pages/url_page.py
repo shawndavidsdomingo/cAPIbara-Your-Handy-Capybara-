@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                                QScrollArea, QSizePolicy, QMessageBox)
 
 from core import session
+from core.zoom import px
 from services import url_service
 from services.url_service import ShortenError
 from ui.widgets import make_button, make_card, make_label, make_error_label
@@ -137,7 +138,7 @@ class UrlPage(QWidget):
         self.long_url.setPlaceholderText("Paste your long URL here (http:// or https://)")
         self.long_url.returnPressed.connect(self.shorten)
         self.shorten_button = QPushButton("Shorten")
-        self.shorten_button.setMinimumWidth(110)
+        self.shorten_button.setMinimumWidth(px(110))
         self.shorten_button.clicked.connect(self.shorten)
         input_row = QHBoxLayout()
         input_row.addWidget(self.long_url, 1)
@@ -148,7 +149,7 @@ class UrlPage(QWidget):
         self.short_url.setPlaceholderText("Short URL appears here")
         copy = make_button("Copy", lambda: self.copy_url(self.short_url.text()),
                            secondary=True)
-        copy.setMinimumWidth(110)
+        copy.setMinimumWidth(px(110))
         out_row = QHBoxLayout()
         out_row.addWidget(self.short_url, 1)
         out_row.addWidget(copy)
@@ -174,7 +175,7 @@ class UrlPage(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search short or original link")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(300)
+        self.search.setFixedWidth(px(300))
         self.search.textChanged.connect(self.render_history)
         history_row.addWidget(self.search)
         layout.addLayout(history_row)
@@ -309,21 +310,21 @@ class UrlPage(QWidget):
         box.setSpacing(6)
 
         open_btn = QPushButton("Open")
-        open_btn.setStyleSheet("padding: 2px 6px;")      # room for the label
-        open_btn.setFixedSize(64, 30)
+        open_btn.setStyleSheet(f"padding: {px(2)}px {px(6)}px;")      # room for the label
+        open_btn.setFixedSize(px(64), px(30))
         open_btn.clicked.connect(lambda checked=False, l=link: self.open_link(l))
 
         copy_btn = QPushButton("Copy")
         copy_btn.setObjectName("secondary")
-        copy_btn.setStyleSheet("padding: 2px 6px;")
-        copy_btn.setFixedSize(64, 30)
+        copy_btn.setStyleSheet(f"padding: {px(2)}px {px(6)}px;")
+        copy_btn.setFixedSize(px(64), px(30))
         copy_btn.clicked.connect(
             lambda checked=False, l=link: self.copy_url(l["short_url"]))
 
         trash = QPushButton("🗑")                         # same style as Fake Data
         trash.setObjectName("trash")
         trash.setToolTip("Delete this link")
-        trash.setFixedSize(34, 30)
+        trash.setFixedSize(px(34), px(30))
         trash.clicked.connect(lambda checked=False, l=link: self.delete_link(l))
 
         for button in (open_btn, copy_btn, trash):

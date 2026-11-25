@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QPointF, QRectF
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QToolTip, QWidget
 
+from core.zoom import px
 from ui.theme import COLORS
 
 
@@ -25,9 +26,9 @@ def nice_step(top):
     return max(1, round(10 * magnitude))
 
 
-def small_font(widget, pixels=11, bold=False):
+def small_font(widget, pixels=None, bold=False):
     font = QFont(widget.font())
-    font.setPixelSize(pixels)
+    font.setPixelSize(pixels or px(11))
     font.setBold(bold)
     return font
 
@@ -38,7 +39,7 @@ class ColorDot(QWidget):
     def __init__(self, color, size=10):
         super().__init__()
         self.color = QColor(color)
-        self.setFixedSize(size, size)
+        self.setFixedSize(px(size), px(size))
 
     def paintEvent(self, _event):
         painter = QPainter(self)
@@ -61,7 +62,7 @@ class BarChart(QWidget):
         self.hover = -1
         self.plot = QRectF()
         self.setMouseTracking(True)
-        self.setMinimumHeight(170)
+        self.setMinimumHeight(px(170))
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def set_data(self, days):
@@ -172,7 +173,7 @@ class DonutChart(QWidget):
     def __init__(self):
         super().__init__()
         self.items = []
-        self.setMinimumSize(150, 150)
+        self.setMinimumSize(px(150), px(150))
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def set_data(self, items):
@@ -212,7 +213,7 @@ class DonutChart(QWidget):
         center = QRectF(self.rect())
         painter.drawText(center.adjusted(0, -10, 0, -10), Qt.AlignCenter, str(total))
         painter.setPen(QColor(COLORS["muted"]))
-        painter.setFont(small_font(self, 11))
+        painter.setFont(small_font(self))
         label_rect = QRectF(center.left(), center.center().y() + side * 0.07,
                             center.width(), 16)
         painter.drawText(label_rect, Qt.AlignHCenter | Qt.AlignTop, "in total")

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QPushButton, QTextEdit,
                                QWidget)
 
+from core.zoom import px
 from services import contact_service, message_service
 from ui.theme import COLORS
 from services.auth_service import (email_taken, is_valid_email, mask_email,
@@ -28,7 +29,7 @@ from ui.workers import Task
 def make_dialog_layout(dialog, title_text, center=False):
     """Shared dialog setup: modal, fixed width, heading. Returns the layout."""
     dialog.setModal(True)
-    dialog.setFixedWidth(380)
+    dialog.setFixedWidth(px(380))
     layout = QVBoxLayout(dialog)
     layout.setContentsMargins(30, 26, 30, 26)
     layout.setSpacing(8)
@@ -49,7 +50,7 @@ def quiet(text, center=False):
 def error_line():
     """The red message line. It keeps its height, so the dialog does not jump."""
     label = make_error_label()
-    label.setMinimumHeight(20)
+    label.setMinimumHeight(px(20))
     return label
 
 
@@ -352,7 +353,7 @@ class ContactPickerDialog(QDialog):
         self.search.textChanged.connect(self.fill)
         self.search.returnPressed.connect(self.choose)
         self.list = QListWidget()
-        self.list.setMinimumHeight(220)
+        self.list.setMinimumHeight(px(220))
         self.list.itemDoubleClicked.connect(lambda _item: self.choose())
 
         layout.addWidget(self.search)
@@ -388,7 +389,7 @@ class SentDialog(QDialog):
         layout = make_dialog_layout(self, f"{kind} sent", center=True)
 
         badge = make_label("\u2713", "successBadge", center=True)     # a check mark
-        badge.setFixedSize(44, 44)
+        badge.setFixedSize(px(44), px(44))
         layout.insertWidget(0, badge, 0, Qt.AlignHCenter)
 
         to = make_label(f"To: {recipient or 'No recipient'}", "bold", center=True)
@@ -415,7 +416,7 @@ class MessageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Sent {kind}")
         layout = make_dialog_layout(self, subject or f"Sent {kind}")
-        self.setFixedWidth(520)
+        self.setFixedWidth(px(520))
 
         to = make_label(f"To: {recipient or 'No recipient'}", "bold")
         to.setWordWrap(True)
@@ -424,7 +425,7 @@ class MessageDialog(QDialog):
         text = QTextEdit()
         text.setReadOnly(True)
         text.setPlainText(body)
-        text.setMinimumHeight(180)
+        text.setMinimumHeight(px(180))
 
         layout.addWidget(to)
         layout.addWidget(quiet(f"Sent {time}"))
@@ -442,7 +443,7 @@ class Spinner(QWidget):
 
     def __init__(self, size=52):
         super().__init__()
-        self.setFixedSize(size, size)
+        self.setFixedSize(px(size), px(size))
         self.angle = 0
         self.timer = QTimer(self)
         self.timer.setInterval(16)                 # about 60 frames a second
@@ -486,7 +487,7 @@ class SendingDialog(QDialog):
             f"QDialog#sendingModal {{ border: 1px solid {COLORS['border_strong']}; }}")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setWindowModality(Qt.ApplicationModal)
-        self.setFixedWidth(300)
+        self.setFixedWidth(px(300))
         self.status_text = status_text
         self.ticks = 0
         self.finishing = False

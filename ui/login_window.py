@@ -4,15 +4,16 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from ui import navigation
 from core import session
 from services.auth_service import verify_login
-from ui.widgets import (make_label, make_error_label, make_input, make_button,
-                        make_logo)
+from core.zoom import px
+from ui.widgets import (enable_zoom, fit_window, make_label, make_error_label,
+                        make_input, make_button, make_logo, make_scroller)
 
 
 class LoginWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("cAPIbara – Login")
-        self.setFixedSize(400, 600)
+        fit_window(self, 400, 600)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 28, 28, 28)
@@ -21,7 +22,7 @@ class LoginWindow(QWidget):
         card = QWidget()
         card.setObjectName("card")
         card.setAttribute(Qt.WA_StyledBackground, True)
-        outer.addWidget(card)
+        outer.addWidget(make_scroller(card))
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(32, 28, 32, 28)
@@ -32,7 +33,7 @@ class LoginWindow(QWidget):
         self.username.returnPressed.connect(self.password.setFocus)
         self.password.returnPressed.connect(self.handle_login)
         self.error = make_error_label()
-        self.error.setMinimumHeight(20)           # the form does not jump when an error shows
+        self.error.setMinimumHeight(px(20))           # the form does not jump when an error shows
 
         layout.addWidget(make_logo(96))
         layout.addWidget(make_label("cAPIbara", "title", center=True))
@@ -51,6 +52,7 @@ class LoginWindow(QWidget):
         layout.addWidget(make_button("Create an account", navigation.go_register,
                                      secondary=True))
 
+        enable_zoom(self)
         self.username.setFocus()
 
     def handle_login(self):

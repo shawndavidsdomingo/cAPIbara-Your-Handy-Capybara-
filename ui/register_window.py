@@ -1,208 +1,102 @@
-from PySide6.QtCore import Qt, QEvent
-from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                               QListWidget, QStackedWidget,
-                               QApplication, QMessageBox)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QMessageBox
 
 from ui import navigation
-from core import session
-from ui.pages.dashboard_page import DashboardPage
-from ui.pages.url_page import UrlPage
-from ui.pages.msg_page import MessagePage
-from ui.pages.contacts_page import ContactsPage
-from ui.pages.fake_page import FakeDataPage
-from ui.pages.profile_page import ProfilePage
-from ui.widgets import make_button, make_label, make_logo
+from services.auth_service import (email_taken, is_valid_email, is_valid_username,
+                          register_user, username_taken)
+from ui.dialogs import verify_otp
+from core.zoom import px
+from ui.widgets import (enable_zoom, fit_window, make_label, make_error_label,
+                        make_input, make_button, make_logo, make_scroller)
 
 
-class MainWindow(QMainWindow):
-    MAX_CONTENT_WIDTH = 1500
-
+class RegisterWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.logging_out = False   # logout closes this window without asking
-        self.was_maximized = False # what to go back to when leaving full screen
-        username = session.current()["username"]
-        self.setWindowTitle("cAPIbara: Your Handy Capybara")
+        self.setWindowTitle("cAPIbara – Register")
+        fit_window(self, 400, 730)
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(28, 28, 28, 28)
 
-        # Sidebar: brand on top, menu in the middle, account and logout at the bottom
-        sidebar = QWidget()
-        sidebar.setObjectName("sidebar")
-        sidebar.setAttribute(Qt.WA_StyledBackground, True)
-        sidebar.setFixedWidth(230)
-        side = QVBoxLayout(sidebar)
-        side.setContentsMargins(16, 20, 16, 16)
-        side.setSpacing(4)
+        # Same quiet card as the Login window
+        card = QWidget()
+        card.setObjectName("card")
+        card.setAttribute(Qt.WA_StyledBackground, True)
+        outer.addWidget(make_scroller(card))
 
-        brand = QHBoxLayout()
-        brand.setSpacing(10)
-        names = QVBoxLayout()
-        names.setSpacing(0)
-        names.addWidget(make_label("cAPIbara", "heading"))
-        names.addWidget(make_label("Your Handy Capybara", "muted"))
-        brand.addWidget(make_logo(38))
-        brand.addLayout(names, 1)
-        side.addLayout(brand)
-        side.addSpacing(18)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(32, 24, 32, 24)
+        layout.setSpacing(4)
 
-        self.menu = QListWidget()
-        self.menu.setObjectName("menu")
-        self.menu.addItems(["Dashboard", "URL Shortening", "SMS and Email",
-                            "Contacts", "Fake Data", "Profile"])
-        side.addWidget(self.menu, 1)
+        self.full_name = make_input("Enter your full name")
+        self.email = make_input("Enter your email")
+        self.username = make_input("Choose a username")
+        self.password = make_input("At least 8 characters", password=True)
+        self.confirm = make_input("Re-enter your password", password=True)
+        self.error = make_error_label()
+        self.error.setMinimumHeight(px(20))           # the form does not jump when an error shows
 
-        side.addSpacing(8)
-        who = make_label(session.current()["full_name"], "bold")
-        who.setWordWrap(True)
-        side.addWidget(who)
-        side.addWidget(make_label(f"@{username}", "muted"))
-        side.addSpacing(8)
-        self.fullscreen_button = make_button("Full screen", self.toggle_fullscreen,
-                                             secondary=True)
-        self.fullscreen_button.setToolTip("Press F11 to switch, Esc to leave")
-        side.addWidget(self.fullscreen_button)
-        side.addWidget(make_button("Logout", self.logout, secondary=True))
+        # Enter moves to the next field; Enter on the last one registers
+        fields = (self.full_name, self.email, self.username, self.password, self.confirm)
+        for current, following in zip(fields, fields[1:]):
+            current.returnPressed.connect(following.setFocus)
+        self.confirm.returnPressed.connect(self.handle_register)
 
-        # F11 switches full screen on and off; Esc leaves it
-        QShortcut(QKeySequence("F11"), self, activated=self.toggle_fullscreen)
-        QShortcut(QKeySequence("Esc"), self, activated=self.leave_fullscreen)
+        layout.addWidget(make_logo(64))
+        layout.addWidget(make_label("Create Account", "title", center=True))
+        layout.addWidget(make_label("It only takes a minute", "muted", center=True))
+        layout.addSpacing(14)
+        for text, field in (("Full name", self.full_name), ("Email", self.email),
+                            ("Username", self.username), ("Password", self.password),
+                            ("Confirm password", self.confirm)):
+            layout.addWidget(make_label(text, "fieldLabel"))
+            layout.addWidget(field)
+            layout.addSpacing(6)
+        layout.addWidget(self.error)
+        layout.addSpacing(2)
+        layout.addWidget(make_button("Register", self.handle_register))
+        layout.addStretch()
+        layout.addWidget(make_label("Already have an account?", "muted", center=True))
+        layout.addWidget(make_button("Back to Login", navigation.go_login,
+                                     secondary=True))
 
-        # Pages (same order as the menu items)
-        self.pages = QStackedWidget()
-        self.pages.addWidget(DashboardPage())
-        self.pages.addWidget(UrlPage())
-        self.pages.addWidget(MessagePage())
-        self.pages.addWidget(ContactsPage())
-        self.pages.addWidget(FakeDataPage())
-        self.pages.addWidget(ProfilePage())
+        enable_zoom(self)
+        self.full_name.setFocus()
 
-        self.menu.currentRowChanged.connect(self.change_page)
-        self.menu.setCurrentRow(0)          # also sizes the window (see change_page)
+    def handle_register(self):
+        name = self.full_name.text().strip()
+        email = self.email.text().strip()
+        username = self.username.text().strip()
+        password = self.password.text()
 
-        # The pages sit in a padded area to the right of the sidebar
-        # On a big screen the pages stop growing at MAX_CONTENT_WIDTH and stay
-        # centred, so full screen looks tidy instead of stretched.
-        content = QWidget()
-        content_layout = QHBoxLayout(content)
-        content_layout.setContentsMargins(28, 24, 28, 24)
-        self.pages.setMaximumWidth(self.MAX_CONTENT_WIDTH)
-        content_layout.addStretch(1)
-        content_layout.addWidget(self.pages, 1000)
-        content_layout.addStretch(1)
-
-        root.addWidget(sidebar)
-        root.addWidget(content, 1)
-
-    def can_leave_page(self):
-        # a page with unsaved work (SMS/Email drafts) asks the user first
-        page = self.pages.currentWidget()
-        return not hasattr(page, "confirm_leave") or page.confirm_leave()
-
-    def change_page(self, index):
-        if not self.can_leave_page():
-            # user cancelled: put the sidebar selection back
-            self.menu.blockSignals(True)
-            self.menu.setCurrentRow(self.pages.currentIndex())
-            self.menu.blockSignals(False)
-            return
-        self.pages.setCurrentIndex(index)
-        page = self.pages.currentWidget()
-        if hasattr(page, "refresh"):
-            page.refresh()          # dashboard reloads its numbers
-        self.resize_for(page)
-
-    def resize_for(self, page):
-        """A page with `wide = True` (Fake Data: 10 columns + history list)
-        gets a bigger window. Never bigger than the screen."""
-        if self.isFullScreen() or self.isMaximized():
-            return                  # the user chose the size: leave it alone
-        width, height = (1440, 700) if getattr(page, "wide", False) else (1000, 660)
-        screen = self.screen().availableGeometry()
-        self.resize(min(width, screen.width()), min(height, screen.height()))
-
-    # ---------- Full screen ----------
-
-    def toggle_fullscreen(self):
-        if self.isFullScreen():
-            self.leave_fullscreen()
+        if not all((name, email, username, password, self.confirm.text())):
+            self.error.setText("Please fill in all fields.")
+        elif not is_valid_email(email):
+            self.error.setText("Please enter a valid email address.")
+        elif not is_valid_username(username):
+            self.error.setText(
+                "Username must be 3-20 letters, numbers or underscores.")
+        elif username_taken(username):
+            self.error.setText("That username is already taken.")
+        elif email_taken(email):
+            self.error.setText("That email is already registered.")
+        elif len(password) < 8:
+            self.error.setText("Password must be at least 8 characters.")
+        elif password != self.confirm.text():
+            self.error.setText("Passwords do not match.")
+        elif not verify_otp(self, email, "Verify your email"):
+            self.error.setText("Email not verified. Account not created.")
         else:
-            self.was_maximized = self.isMaximized()
-            self.showFullScreen()
-        self.sync_fullscreen_button()
+            self.create_account(name, email, username, password)
 
-    def leave_fullscreen(self):
-        if self.isFullScreen():
-            if self.was_maximized:
-                self.showMaximized()
-            else:
-                self.showNormal()
-        self.sync_fullscreen_button()
-
-    def sync_fullscreen_button(self):
-        self.fullscreen_button.setText(
-            "Exit full screen" if self.isFullScreen() else "Full screen")
-
-    def changeEvent(self, event):
-        super().changeEvent(event)
-        # the window manager can also switch full screen (for example the green
-        # button on a Mac), so keep the label right in that case too
-        if event.type() == QEvent.WindowStateChange and hasattr(self, "fullscreen_button"):
-            self.sync_fullscreen_button()
-
-    # ---------- Closing the app ----------
-
-    def all_pages(self):
-        return [self.pages.widget(i) for i in range(self.pages.count())]
-
-    def task_running(self):
-        """True if any page is busy (a page opts in by defining is_busy())."""
-        return any(hasattr(page, "is_busy") and page.is_busy()
-                   for page in self.all_pages())
-
-    def confirm_close(self):
-        text = "Are you sure you want to close the app?"
-        if self.task_running():
-            text += ("\n\nA task is still running. "
-                     "The app will close as soon as it finishes.")
-        answer = QMessageBox.question(
-            self, "Close cAPIbara", text,
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        return answer == QMessageBox.Yes
-
-    def finish_running_tasks(self):
-        """Wait for running work (a page opts in by defining shutdown())."""
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+    def create_account(self, name, email, username, password):
+        # The account is only created AFTER the OTP is verified
         try:
-            for page in self.all_pages():
-                if hasattr(page, "shutdown"):
-                    page.shutdown()
-        finally:
-            QApplication.restoreOverrideCursor()
-
-    def closeEvent(self, event):
-        # 1. ask (not when logging out), 2. unsaved drafts, 3. let work finish
-        if not self.logging_out and not self.confirm_close():
-            event.ignore()
-        elif not self.can_leave_page():
-            event.ignore()
-        else:
-            self.finish_running_tasks()
-            event.accept()
-
-    def confirm_logout(self):
-        answer = QMessageBox.question(
-            self, "Log out", "Are you sure you want to log out?",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        return answer == QMessageBox.Yes
-
-    def logout(self):
-        if self.confirm_logout() and self.can_leave_page():
-            self.logging_out = True
-            navigation.go_login()      # closes this window (finishing running work)
-            session.logout()           # cleared last, so that work can still save
+            register_user(username, name, email, password)
+        except ValueError as error:
+            self.error.setText(str(error))
+            return
+        QMessageBox.information(
+            self, "Register", "Account created. You can now log in.")
+        navigation.go_login()

@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from services import fake_service
 from core import session
+from core.zoom import px
 from services.fake_service import FakeDataError, FIELDS
 from ui.widgets import SegmentedControl, make_card, make_label
 from ui.workers import Task
@@ -174,7 +175,7 @@ class FakeDataPage(QWidget):
 
     def build_history_panel(self):
         card = make_card()
-        card.setFixedWidth(290)
+        card.setFixedWidth(px(290))
         left = QVBoxLayout(card)
         left.setContentsMargins(12, 14, 12, 12)
         left.setSpacing(8)
@@ -193,7 +194,7 @@ class FakeDataPage(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         header = table.horizontalHeader()
         header.sectionClicked.connect(self.sort_by_column)
-        header.setMinimumSectionSize(60)
+        header.setMinimumSectionSize(px(60))
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(True)
         return table
@@ -221,7 +222,7 @@ class FakeDataPage(QWidget):
         trash = QPushButton("🗑")
         trash.setObjectName("trash")
         trash.setToolTip("Delete this generation")
-        trash.setFixedSize(34, 30)
+        trash.setFixedSize(px(34), px(30))
         trash.setCursor(Qt.CursorShape.PointingHandCursor)
         trash.clicked.connect(
             lambda checked=False, g=gen: self.delete_generation(g))
